@@ -1,22 +1,23 @@
 <?php
 session_start();
 
-define('APP_NAME', 'jocarsa | Lavanda');
+define('APP_NAME', 'jocarsa | lavender');
 
-// Abrir (o crear) la base de datos SQLite en el mismo directorio
+// Open (or create) the SQLite database in the same directory
 $db = new SQLite3('db.sqlite');
 
-// Inicializar la base de datos (crear tablas si es necesario y agregar el usuario por defecto)
+// Initialize the DB (create tables if needed, add default user, etc.)
 inicializar_db($db);
 
 function inicializar_db($db) {
-    // Tabla de usuarios
+    // Users table
     $db->exec("CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         username TEXT UNIQUE,
         password TEXT
     )");
-    // Crear usuario administrador por defecto si no existe
+
+    // Default admin user
     $stmt = $db->prepare("SELECT COUNT(*) as count FROM users WHERE username = :username");
     $stmt->bindValue(':username', 'jocarsa', SQLITE3_TEXT);
     $result = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
@@ -24,7 +25,7 @@ function inicializar_db($db) {
         $db->exec("INSERT INTO users (username, password) VALUES ('jocarsa', 'jocarsa')");
     }
 
-    // Tabla de formularios
+    // Forms table
     $db->exec("CREATE TABLE IF NOT EXISTS forms (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         title TEXT,
@@ -32,8 +33,8 @@ function inicializar_db($db) {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )");
 
-    // Tabla de controles (campos) con nuevos parámetros:
-    // field_title, description, placeholder, type, min_length, max_length y required (0 o 1)
+    // Controls table (fields)
+    // Using field_values instead of "values" (reserved word)
     $db->exec("CREATE TABLE IF NOT EXISTS controls (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         form_id INTEGER,
@@ -43,10 +44,11 @@ function inicializar_db($db) {
         type TEXT,
         min_length INTEGER,
         max_length INTEGER,
-        required INTEGER DEFAULT 0
+        required INTEGER DEFAULT 0,
+        field_values TEXT
     )");
 
-    // Tabla de envíos (se almacenan los datos en JSON)
+    // Submissions table
     $db->exec("CREATE TABLE IF NOT EXISTS submissions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         form_id INTEGER,
@@ -57,7 +59,7 @@ function inicializar_db($db) {
 }
 
 // ---------------------
-// Funciones de ayuda
+// Helper Functions
 // ---------------------
 function esta_logueado() {
     return isset($_SESSION['user']);
@@ -77,11 +79,12 @@ function html_header($titulo = APP_NAME) {
   <meta charset='utf-8'>
   <title>" . htmlspecialchars($titulo) . "</title>
   <link rel='stylesheet' type='text/css' href='style.css' />
+  <link rel='icon' type='image/svg+xml' href='lavender.png' />
 </head>
 <body>
 <div id='wrapper'>
   <header id='header'>
-    <h1>" . APP_NAME . "</h1>
+    <h1><img src='lavender.png'>" . APP_NAME . "</h1>
   </header>
 ";
 }
@@ -107,7 +110,7 @@ function admin_menu() {
 }
 
 // ---------------------
-// Enrutamiento
+// Routing
 // ---------------------
 if (isset($_GET['form'])) {
     $form_hash = $_GET['form'];
@@ -127,12 +130,13 @@ if (isset($_GET['form'])) {
 }
 
 // ---------------------
-// Manejador del Formulario Público
+// Public Form Handler
 // ---------------------
 function manejar_formulario_publico($hash) {
     global $db;
     html_header("Completar Formulario - " . APP_NAME);
-    // Buscar el formulario por hash único
+
+    // Find the form by its unique hash
     $stmt = $db->prepare("SELECT * FROM forms WHERE hash = :hash");
     $stmt->bindValue(':hash', $hash, SQLITE3_TEXT);
     $form = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
@@ -141,7 +145,8 @@ function manejar_formulario_publico($hash) {
         html_footer();
         exit;
     }
-    // Recuperar todos los controles (campos) para este formulario
+
+    // Get all controls for this form
     $stmt = $db->prepare("SELECT * FROM controls WHERE form_id = :form_id");
     $stmt->bindValue(':form_id', $form['id'], SQLITE3_INTEGER);
     $resultado = $stmt->execute();
@@ -149,33 +154,98 @@ function manejar_formulario_publico($hash) {
     while ($row = $resultado->fetchArray(SQLITE3_ASSOC)) {
          $controles[] = $row;
     }
-    // Procesar envío
+
+    // If there's a file field, we need multipart/form-data. We'll just always use it for simplicity.
     if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+         // Ensure the "media" folder exists for file uploads
+         if (!is_dir('media')) {
+             mkdir('media');
+         }
+
          $datos_envio = [];
          foreach ($controles as $control) {
              $nombre_campo = "campo_" . $control['id'];
-             $datos_envio[$control['field_title']] = isset($_POST[$nombre_campo]) ? $_POST[$nombre_campo] : '';
+
+             // If type=none, no input is shown—store empty or skip
+             if ($control['type'] === 'none') {
+                 $datos_envio[$control['field_title']] = '';
+                 continue;
+             }
+
+             // Checkbox can return an array if multiple are selected
+             if ($control['type'] === 'checkbox') {
+                 // Check if the user selected anything
+                 if (isset($_POST[$nombre_campo]) && is_array($_POST[$nombre_campo])) {
+                     // Join selected values into one string
+                     $datos_envio[$control['field_title']] = implode(', ', $_POST[$nombre_campo]);
+                 } else {
+                     $datos_envio[$control['field_title']] = '';
+                 }
+                 continue;
+             }
+
+             // File input
+             if ($control['type'] === 'file') {
+                 if (isset($_FILES[$nombre_campo]) && $_FILES[$nombre_campo]['error'] === UPLOAD_ERR_OK) {
+                     $uploaded_file_name = uniqid() . '_' . basename($_FILES[$nombre_campo]['name']);
+                     $destination = 'media/' . $uploaded_file_name;
+                     if (move_uploaded_file($_FILES[$nombre_campo]['tmp_name'], $destination)) {
+                         // Store the file path
+                         $datos_envio[$control['field_title']] = $destination;
+                     } else {
+                         $datos_envio[$control['field_title']] = 'Error al subir el archivo';
+                     }
+                 } else {
+                     $datos_envio[$control['field_title']] = '';
+                 }
+                 continue;
+             }
+
+             // Radio or select
+             if ($control['type'] === 'radio' || $control['type'] === 'select') {
+                 if (isset($_POST[$nombre_campo])) {
+                     $datos_envio[$control['field_title']] = $_POST[$nombre_campo];
+                 } else {
+                     $datos_envio[$control['field_title']] = '';
+                 }
+                 continue;
+             }
+
+             // For all other input types (text, textarea, number, email, date, time, datetime-local, etc.)
+             $valor = isset($_POST[$nombre_campo]) ? $_POST[$nombre_campo] : '';
+             $datos_envio[$control['field_title']] = $valor;
          }
+
+         // Insert submission in DB
          $unique_id = uniqid("env_", true);
          $stmt = $db->prepare("INSERT INTO submissions (form_id, unique_id, data) VALUES (:form_id, :unique_id, :data)");
          $stmt->bindValue(':form_id', $form['id'], SQLITE3_INTEGER);
          $stmt->bindValue(':unique_id', $unique_id, SQLITE3_TEXT);
          $stmt->bindValue(':data', json_encode($datos_envio), SQLITE3_TEXT);
          $stmt->execute();
+
          echo "<div id='content'><p>Gracias por tu envío. Tu ID de envío es: <strong>" . htmlspecialchars($unique_id) . "</strong></p></div>";
          html_footer();
          exit;
     }
-    // Mostrar el formulario
+
+    // Show the form
     echo "<div id='content'>";
     echo "<h2>" . htmlspecialchars($form['title']) . "</h2>";
-    echo "<form method='post' id='publicForm'>";
+    echo "<form method='post' id='publicForm' enctype='multipart/form-data'>";
+
     foreach ($controles as $control) {
          echo "<div class='form-field'>";
-         echo "<label>" . htmlspecialchars($control['field_title']) . ($control['required'] ? " *" : "") . ":</label><br>";
+         // Label
+         echo "<label>" . htmlspecialchars($control['field_title']);
+         echo ($control['required'] ? " *" : "") . ":</label><br>";
+
+         // Description
          if (!empty($control['description'])) {
              echo "<small>" . htmlspecialchars($control['description']) . "</small><br>";
          }
+
+         // Common attributes
          $nombre_campo = "campo_" . $control['id'];
          $atributos = "";
          if (!empty($control['min_length'])) {
@@ -190,13 +260,73 @@ function manejar_formulario_publico($hash) {
          if ($control['required']) {
              $atributos .= " required";
          }
-         if ($control['type'] == 'textarea') {
-             echo "<textarea name='" . htmlspecialchars($nombre_campo) . "' rows='4' {$atributos}></textarea>";
-         } else {
-             echo "<input type='" . htmlspecialchars($control['type']) . "' name='" . htmlspecialchars($nombre_campo) . "' {$atributos} />";
+
+         // Check the field type
+         switch ($control['type']) {
+             case 'none':
+                 // No input, just show label/description
+                 break;
+
+             case 'textarea':
+                 echo "<textarea name='" . htmlspecialchars($nombre_campo) . "' rows='4' {$atributos}></textarea>";
+                 break;
+
+             case 'checkbox':
+                 // Split field_values by comma
+                 $options = array_map('trim', explode(',', $control['field_values']));
+                 foreach ($options as $opt) {
+                     $optSafe = htmlspecialchars($opt);
+                     echo "<label><input type='checkbox' name='" . htmlspecialchars($nombre_campo) . "[]' value='{$optSafe}'> {$optSafe}</label><br>";
+                 }
+                 break;
+
+             case 'radio':
+                 // Radio buttons
+                 $options = array_map('trim', explode(',', $control['field_values']));
+                 foreach ($options as $opt) {
+                     $optSafe = htmlspecialchars($opt);
+                     echo "<label><input type='radio' name='" . htmlspecialchars($nombre_campo) . "' value='{$optSafe}' {$atributos}> {$optSafe}</label><br>";
+                 }
+                 break;
+
+             case 'select':
+                 // Dropdown
+                 echo "<select name='" . htmlspecialchars($nombre_campo) . "' {$atributos}>";
+                 $options = array_map('trim', explode(',', $control['field_values']));
+                 foreach ($options as $opt) {
+                     $optSafe = htmlspecialchars($opt);
+                     echo "<option value='{$optSafe}'>{$optSafe}</option>";
+                 }
+                 echo "</select>";
+                 break;
+
+             case 'file':
+                 echo "<input type='file' name='" . htmlspecialchars($nombre_campo) . "' {$atributos} />";
+                 break;
+
+             case 'time':
+                 echo "<input type='time' name='" . htmlspecialchars($nombre_campo) . "' {$atributos} />";
+                 break;
+
+             case 'date':
+                 echo "<input type='date' name='" . htmlspecialchars($nombre_campo) . "' {$atributos} />";
+                 break;
+
+             case 'datetime':
+             case 'datetime-local':
+                 echo "<input type='datetime-local' name='" . htmlspecialchars($nombre_campo) . "' {$atributos} />";
+                 break;
+
+             default:
+                 // text, number, email, password, url, etc.
+                 $type = htmlspecialchars($control['type']);
+                 echo "<input type='{$type}' name='" . htmlspecialchars($nombre_campo) . "' {$atributos} />";
+                 break;
          }
+
          echo "</div>";
     }
+
     echo "<button type='submit'>Enviar</button>";
     echo "</form>";
     echo "</div>";
@@ -204,22 +334,25 @@ function manejar_formulario_publico($hash) {
 }
 
 // ---------------------
-// Manejador del Área de Administración
+// Admin Area Handler
 // ---------------------
 function manejar_admin() {
     global $db;
     $accion = $_GET['admin'];
-    // Página de acceso de administrador
+
+    // Admin login
     if ($accion == 'login') {
          html_header("Acceso Administrador - " . APP_NAME);
          echo "<div id='content'>";
          if ($_SERVER['REQUEST_METHOD'] == 'POST') {
               $usuario = $_POST['username'];
               $clave = $_POST['password'];
+
               $stmt = $db->prepare("SELECT * FROM users WHERE username = :username AND password = :password");
               $stmt->bindValue(':username', $usuario, SQLITE3_TEXT);
               $stmt->bindValue(':password', $clave, SQLITE3_TEXT);
               $resultado = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+
               if ($resultado) {
                   $_SESSION['user'] = $usuario;
                   header("Location: ?admin=dashboard");
@@ -237,14 +370,17 @@ function manejar_admin() {
          html_footer();
          exit;
     }
-    // Cerrar sesión
+
+    // Logout
     if ($accion == 'logout') {
          session_destroy();
          header("Location: ?admin=login");
          exit;
     }
-    // Todas las páginas administrativas siguientes requieren login
+
+    // All other admin actions require login
     requiere_login();
+
     if ($accion == 'dashboard') {
          admin_dashboard();
          exit;
@@ -315,11 +451,14 @@ function admin_new_form() {
          $stmt->bindValue(':title', $titulo, SQLITE3_TEXT);
          $stmt->execute();
          $form_id = $db->lastInsertRowID();
+
+         // Generate a hash based on form_id, time, random
          $hash = md5($form_id . time() . rand());
          $stmt = $db->prepare("UPDATE forms SET hash = :hash WHERE id = :id");
          $stmt->bindValue(':hash', $hash, SQLITE3_TEXT);
          $stmt->bindValue(':id', $form_id, SQLITE3_INTEGER);
          $stmt->execute();
+
          header("Location: ?admin=editform&id=" . $form_id);
          exit;
     }
@@ -334,6 +473,7 @@ function admin_new_form() {
 
 function admin_edit_form($form_id) {
     global $db;
+    // Get the form
     $stmt = $db->prepare("SELECT * FROM forms WHERE id = :id");
     $stmt->bindValue(':id', $form_id, SQLITE3_INTEGER);
     $form = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
@@ -341,12 +481,13 @@ function admin_edit_form($form_id) {
          echo "Formulario no encontrado.";
          exit;
     }
+
     html_header("Editar Formulario: " . $form['title'] . " - " . APP_NAME);
     admin_menu();
     echo "<div id='content'>";
-    echo "<p>URL del Formulario Externo: <a href='?form=" . htmlspecialchars($form['hash']) . "' target='_blank'>?form=" . htmlspecialchars($form['hash']) . "</a></p>";
-    
-    // Procesar el alta de un nuevo campo
+    echo "<p class='url'>URL del Formulario Externo: <a href='?form=" . htmlspecialchars($form['hash']) . "' target='_blank'>?form=" . htmlspecialchars($form['hash']) . "</a></p>";
+
+    // Process new field
     if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['field_title'])) {
          $field_title = $_POST['field_title'];
          $description = isset($_POST['description']) ? $_POST['description'] : '';
@@ -355,50 +496,73 @@ function admin_edit_form($form_id) {
          $type = $_POST['type'];
          $min_length = !empty($_POST['min_length']) ? intval($_POST['min_length']) : null;
          $max_length = !empty($_POST['max_length']) ? intval($_POST['max_length']) : null;
-         $stmt = $db->prepare("INSERT INTO controls (form_id, field_title, description, placeholder, type, min_length, max_length, required) VALUES (:form_id, :field_title, :description, :placeholder, :type, :min_length, :max_length, :required)");
+         $values = isset($_POST['values']) ? $_POST['values'] : '';
+
+         $stmt = $db->prepare("
+            INSERT INTO controls 
+            (form_id, field_title, description, placeholder, type, min_length, max_length, required, field_values) 
+            VALUES 
+            (:form_id, :field_title, :description, :placeholder, :type, :min_length, :max_length, :required, :field_values)
+         ");
+
          $stmt->bindValue(':form_id', $form_id, SQLITE3_INTEGER);
          $stmt->bindValue(':field_title', $field_title, SQLITE3_TEXT);
          $stmt->bindValue(':description', $description, SQLITE3_TEXT);
          $stmt->bindValue(':placeholder', $placeholder, SQLITE3_TEXT);
          $stmt->bindValue(':type', $type, SQLITE3_TEXT);
+
          if ($min_length !== null) {
              $stmt->bindValue(':min_length', $min_length, SQLITE3_INTEGER);
          } else {
              $stmt->bindValue(':min_length', null, SQLITE3_NULL);
          }
+
          if ($max_length !== null) {
              $stmt->bindValue(':max_length', $max_length, SQLITE3_INTEGER);
          } else {
              $stmt->bindValue(':max_length', null, SQLITE3_NULL);
          }
+
          $stmt->bindValue(':required', $required, SQLITE3_INTEGER);
+         $stmt->bindValue(':field_values', $values, SQLITE3_TEXT);
+
          $stmt->execute();
          header("Location: ?admin=editform&id=" . $form_id);
          exit;
     }
-    // Formulario para agregar un nuevo campo
+
+    // New field form
     echo "<h2>Agregar Nuevo Campo</h2>";
     echo "<form method='post' id='newControl'>";
     echo "<label>Título del Campo:</label> <input type='text' name='field_title' required><br><br>";
-    echo "<label>Descripción (opcional):</label> <textarea name='description'></textarea><br><br>";
-    echo "<label>Placeholder (opcional):</label> <input type='text' name='placeholder'><br><br>";
+    echo "<label>Descripción (opcional):</label><br> <textarea name='description'></textarea><br><br>";
+    echo "<label>Placeholder (opcional):</label><br> <input type='text' name='placeholder'><br><br>";
     echo "<label>Obligatorio:</label> <input type='checkbox' name='required' value='1'><br><br>";
     echo "<label>Tipo:</label> 
           <select name='type'>
+            <option value='none'>Ninguno (solo texto)</option>
             <option value='text'>Texto</option>
             <option value='textarea'>Área de Texto</option>
             <option value='number'>Número</option>
             <option value='email'>Correo</option>
             <option value='date'>Fecha</option>
+            <option value='time'>Hora</option>
+            <option value='datetime-local'>Fecha y Hora</option>
             <option value='password'>Contraseña</option>
             <option value='url'>URL</option>
+            <option value='checkbox'>Checkbox(es)</option>
+            <option value='radio'>Radio</option>
+            <option value='select'>Select (desplegable)</option>
+            <option value='file'>Archivo</option>
           </select><br><br>";
+    echo "<label>Valores (para checkbox, radio o select - separar por comas):</label><br> 
+          <input type='text' name='values'><br><br>";
     echo "<label>Longitud Mínima (opcional):</label> <input type='number' name='min_length' min='0'><br><br>";
     echo "<label>Longitud Máxima (opcional):</label> <input type='number' name='max_length' min='0'><br><br>";
     echo "<button type='submit'>Agregar Campo</button>";
     echo "</form>";
-    
-    // Listar los campos actuales
+
+    // List current fields
     echo "<h2>Campos Actuales</h2>";
     $stmt = $db->prepare("SELECT * FROM controls WHERE form_id = :form_id");
     $stmt->bindValue(':form_id', $form_id, SQLITE3_INTEGER);
@@ -406,21 +570,26 @@ function admin_edit_form($form_id) {
     if ($resultado) {
         echo "<ul class='control-list'>";
         while ($row = $resultado->fetchArray(SQLITE3_ASSOC)) {
-             echo "<li>" . htmlspecialchars($row['field_title']) . " (" . htmlspecialchars($row['type']) . ")";
+             echo "<li>";
+             echo "<strong>" . htmlspecialchars($row['field_title']) . "</strong> ";
+             echo "(" . htmlspecialchars($row['type']) . ")";
              if (!empty($row['description'])) {
-                echo " - " . htmlspecialchars($row['description']);
+                echo " - <em>" . htmlspecialchars($row['description']) . "</em>";
              }
              if (!empty($row['placeholder'])) {
                 echo " [Placeholder: " . htmlspecialchars($row['placeholder']) . "]";
              }
              if ($row['required']) {
-                echo " <strong>* Obligatorio</strong>";
+                echo " <strong>(Obligatorio)</strong>";
              }
              if (!empty($row['min_length'])) {
                 echo " [Min: " . $row['min_length'] . "]";
              }
              if (!empty($row['max_length'])) {
                 echo " [Max: " . $row['max_length'] . "]";
+             }
+             if (!empty($row['field_values'])) {
+                echo " [Valores: " . htmlspecialchars($row['field_values']) . "]";
              }
              echo "</li>";
         }
@@ -461,7 +630,14 @@ function admin_view_submissions($form_id) {
          echo "<td>";
          if (is_array($data)) {
              foreach ($data as $label => $value) {
-                 echo "<strong>" . htmlspecialchars($label) . ":</strong> " . htmlspecialchars($value) . "<br>";
+                 // If it's a file path, show a link
+                 if (strpos($value, 'media/') === 0) {
+                     $filename = basename($value);
+                     echo "<strong>" . htmlspecialchars($label) . ":</strong> 
+                           <a href='" . htmlspecialchars($value) . "' target='_blank'>" . htmlspecialchars($filename) . "</a><br>";
+                 } else {
+                     echo "<strong>" . htmlspecialchars($label) . ":</strong> " . htmlspecialchars($value) . "<br>";
+                 }
              }
          } else {
              echo htmlspecialchars($row['data']);
