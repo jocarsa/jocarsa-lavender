@@ -1,0 +1,355 @@
+/* Importar fuente Roboto desde Google Fonts */
+@import url('https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap');
+
+/* Reset básico */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* Fuente base y fondo */
+body {
+  font-family: 'Roboto', sans-serif;
+  background: #f5f7fa;
+  color: #444;
+  line-height: 1.6;
+}
+
+/* Contenedor principal */
+#wrapper {
+  max-width: 1200px;
+  margin: 30px auto;
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+}
+
+/* Cabecera */
+#header {
+  background: linear-gradient(135deg, #9575CD, #7E57C2);
+  color: #fff;
+  padding: 30px;
+  text-align: center;
+}
+
+#header h1 {
+  font-size: 32px;
+  font-weight: 500;
+  margin: 0;
+}
+
+/* Menú de administración */
+#adminmenu {
+  background: #7E57C2;
+  padding: 10px 0;
+}
+
+#adminmenu ul {
+  list-style: none;
+  display: flex;
+  justify-content: center;
+  padding: 0;
+  margin: 0;
+}
+
+#adminmenu ul li {
+  margin: 0;
+}
+
+#adminmenu ul li a {
+  display: block;
+  padding: 15px 25px;
+  color: #fff;
+  text-decoration: none;
+  transition: background 0.3s, transform 0.3s;
+  font-weight: 500;
+  border-radius: 5px;
+}
+
+#adminmenu ul li a:hover,
+#adminmenu ul li a:focus {
+  background: rgba(255, 255, 255, 0.1);
+  transform: translateY(-2px);
+}
+
+/* Área de contenido */
+#content {
+  padding: 40px;
+}
+
+/* Títulos en el panel de control */
+#content h2 {
+  font-size: 24px;
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 25px;
+  border-bottom: 2px solid #7E57C2;
+  padding-bottom: 10px;
+}
+
+/* ------------------------- */
+/* Estilos para todos los formularios */
+/* ------------------------- */
+form {
+  max-width: 800px;
+  margin: 0 auto;
+  background: #fff;
+  padding: 30px;
+  border-radius: 10px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+form label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 8px;
+  color: #555;
+}
+
+.form-field {
+  margin-bottom: 25px;
+  position: relative;
+}
+
+input[type="text"],
+input[type="email"],
+input[type="number"],
+input[type="date"],
+input[type="password"],
+input[type="url"],
+textarea,
+ select {
+  width: 100%;
+  padding: 12px 15px;
+  border: 2px solid #ddd;
+  border-radius: 5px;
+  transition: border-color 0.3s, box-shadow 0.3s;
+  font-size: 16px;
+  color: #333;
+}
+
+ input:focus,
+ textarea:focus,
+ select:focus {
+  border-color: #7E57C2;
+  box-shadow: 0 0 8px rgba(126, 87, 194, 0.3);
+  outline: none;
+}
+
+ textarea {
+  resize: vertical;
+  min-height: 120px;
+}
+
+/* Placeholder styling */
+ input::placeholder,
+textarea::placeholder {
+  color: #999;
+  font-weight: 300;
+}
+
+/* Botones en todos los formularios */
+button {
+  background: #7E57C2;
+  color: #fff;
+  border: none;
+  padding: 14px 30px;
+  font-size: 16px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.3s, transform 0.3s, box-shadow 0.3s;
+  display: inline-block;
+  margin-top: 15px;
+  font-weight: 500;
+}
+
+button:hover,
+button:focus {
+  background: #6A4BAE;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* ------------------------- */
+/* Estilos específicos para el formulario de login */
+/* ------------------------- */
+#loginForm {
+  max-width: 400px;
+  margin: 50px auto;
+  background: #fff;
+  padding: 30px;
+  border-radius: 10px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+#loginForm h2 {
+  font-size: 24px;
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 25px;
+  text-align: center;
+}
+
+#loginForm label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 8px;
+  color: #555;
+}
+
+#loginForm input[type="text"],
+#loginForm input[type="password"] {
+  width: 100%;
+  padding: 12px 15px;
+  border: 2px solid #ddd;
+  border-radius: 5px;
+  transition: border-color 0.3s, box-shadow 0.3s;
+  font-size: 16px;
+  color: #333;
+}
+
+#loginForm input:focus {
+  border-color: #7E57C2;
+  box-shadow: 0 0 8px rgba(126, 87, 194, 0.3);
+  outline: none;
+}
+
+#loginForm button {
+  width: 100%;
+  margin-top: 20px;
+}
+
+/* ------------------------- */
+/* Estilos para la creación y edición de formularios */
+/* ------------------------- */
+#newForm,
+#newControl {
+  max-width: 800px;
+  margin: 0 auto;
+  background: #fff;
+  padding: 30px;
+  border-radius: 10px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+#newForm h2,
+#newControl h2 {
+  font-size: 24px;
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 25px;
+  border-bottom: 2px solid #7E57C2;
+  padding-bottom: 10px;
+}
+
+/* ------------------------- */
+/* Estilos para las tablas en el panel de control */
+/* ------------------------- */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 25px;
+  background: #fff;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+}
+
+table th,
+table td {
+  padding: 15px;
+  border: 1px solid #eee;
+  text-align: left;
+}
+
+table th {
+  background: #7E57C2;
+  color: #fff;
+  font-weight: 500;
+}
+
+table tr:nth-child(even) {
+  background: #fafafa;
+}
+
+table tr:hover {
+  background: #f5f5f5;
+}
+
+/* ------------------------- */
+/* Estilos para mensajes de error */
+/* ------------------------- */
+.error {
+  color: #e74c3c;
+  margin-bottom: 20px;
+  text-align: center;
+  font-weight: 500;
+}
+
+/* ------------------------- */
+/* Pie de página */
+/* ------------------------- */
+#footer {
+  background: #9575CD;
+  color: #fff;
+  text-align: center;
+  padding: 20px;
+  font-size: 14px;
+  margin-top: 40px;
+}
+
+/* ------------------------- */
+/* Animaciones */
+/* ------------------------- */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+#content {
+  animation: fadeIn 0.5s ease-in-out;
+}
+
+/* ------------------------- */
+/* Responsive Design */
+/* ------------------------- */
+@media (max-width: 768px) {
+  #wrapper {
+    margin: 15px;
+    border-radius: 0;
+  }
+
+  #header h1 {
+    font-size: 24px;
+  }
+
+  #adminmenu ul {
+    flex-direction: column;
+  }
+
+  #adminmenu ul li a {
+    padding: 10px;
+    text-align: center;
+  }
+
+  #content {
+    padding: 20px;
+  }
+
+  form {
+    padding: 20px;
+  }
+
+  table th,
+  table td {
+    padding: 10px;
+  }
+}
