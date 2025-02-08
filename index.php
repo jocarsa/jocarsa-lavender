@@ -49,11 +49,16 @@ function inicializar_db($db) {
     )");
 
     // Submissions table
+    // Added new fields: datetime, epoch, ip, and user_agent
     $db->exec("CREATE TABLE IF NOT EXISTS submissions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         form_id INTEGER,
         unique_id TEXT,
         data TEXT,
+        datetime TEXT,
+        epoch INTEGER,
+        ip TEXT,
+        user_agent TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )");
 }
@@ -155,7 +160,7 @@ function manejar_formulario_publico($hash) {
          $controles[] = $row;
     }
 
-    // If there's a file field, we need multipart/form-data. We'll just always use it for simplicity.
+    // Always use multipart/form-data (for possible file uploads)
     if ($_SERVER['REQUEST_METHOD'] == 'POST') {
          // Ensure the "media" folder exists for file uploads
          if (!is_dir('media')) {
@@ -174,9 +179,7 @@ function manejar_formulario_publico($hash) {
 
              // Checkbox can return an array if multiple are selected
              if ($control['type'] === 'checkbox') {
-                 // Check if the user selected anything
                  if (isset($_POST[$nombre_campo]) && is_array($_POST[$nombre_campo])) {
-                     // Join selected values into one string
                      $datos_envio[$control['field_title']] = implode(', ', $_POST[$nombre_campo]);
                  } else {
                      $datos_envio[$control['field_title']] = '';
@@ -216,12 +219,22 @@ function manejar_formulario_publico($hash) {
              $datos_envio[$control['field_title']] = $valor;
          }
 
-         // Insert submission in DB
+         // Capture additional submission details
          $unique_id = uniqid("env_", true);
-         $stmt = $db->prepare("INSERT INTO submissions (form_id, unique_id, data) VALUES (:form_id, :unique_id, :data)");
+         $submission_datetime = date("Y-m-d H:i:s");
+         $submission_epoch = time();
+         $ip = isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : 'unknown';
+         $user_agent = isset($_SERVER['HTTP_USER_AGENT']) ? $_SERVER['HTTP_USER_AGENT'] : '';
+
+         // Insert submission in DB including the extra fields
+         $stmt = $db->prepare("INSERT INTO submissions (form_id, unique_id, data, datetime, epoch, ip, user_agent) VALUES (:form_id, :unique_id, :data, :datetime, :epoch, :ip, :user_agent)");
          $stmt->bindValue(':form_id', $form['id'], SQLITE3_INTEGER);
          $stmt->bindValue(':unique_id', $unique_id, SQLITE3_TEXT);
          $stmt->bindValue(':data', json_encode($datos_envio), SQLITE3_TEXT);
+         $stmt->bindValue(':datetime', $submission_datetime, SQLITE3_TEXT);
+         $stmt->bindValue(':epoch', $submission_epoch, SQLITE3_INTEGER);
+         $stmt->bindValue(':ip', $ip, SQLITE3_TEXT);
+         $stmt->bindValue(':user_agent', $user_agent, SQLITE3_TEXT);
          $stmt->execute();
 
          echo "<div id='content'><p>Gracias por tu envío. Tu ID de envío es: <strong>" . htmlspecialchars($unique_id) . "</strong></p></div>";
@@ -261,7 +274,7 @@ function manejar_formulario_publico($hash) {
              $atributos .= " required";
          }
 
-         // Check the field type
+         // Render the input according to its type
          switch ($control['type']) {
              case 'none':
                  // No input, just show label/description
@@ -272,7 +285,6 @@ function manejar_formulario_publico($hash) {
                  break;
 
              case 'checkbox':
-                 // Split field_values by comma
                  $options = array_map('trim', explode(',', $control['field_values']));
                  foreach ($options as $opt) {
                      $optSafe = htmlspecialchars($opt);
@@ -281,7 +293,6 @@ function manejar_formulario_publico($hash) {
                  break;
 
              case 'radio':
-                 // Radio buttons
                  $options = array_map('trim', explode(',', $control['field_values']));
                  foreach ($options as $opt) {
                      $optSafe = htmlspecialchars($opt);
@@ -290,7 +301,6 @@ function manejar_formulario_publico($hash) {
                  break;
 
              case 'select':
-                 // Dropdown
                  echo "<select name='" . htmlspecialchars($nombre_campo) . "' {$atributos}>";
                  $options = array_map('trim', explode(',', $control['field_values']));
                  foreach ($options as $opt) {
@@ -318,7 +328,6 @@ function manejar_formulario_publico($hash) {
                  break;
 
              default:
-                 // text, number, email, password, url, etc.
                  $type = htmlspecialchars($control['type']);
                  echo "<input type='{$type}' name='" . htmlspecialchars($nombre_campo) . "' {$atributos} />";
                  break;
@@ -611,23 +620,24 @@ function admin_view_submissions($form_id) {
     html_header("Envíos para " . $form['title'] . " - " . APP_NAME);
     admin_menu();
     echo "<div id='content'>";
-    $stmt = $db->prepare("SELECT * FROM submissions WHERE form_id = :form_id ORDER BY id DESC");
-    $stmt->bindValue(':form_id', $form_id, SQLITE3_INTEGER);
-    $resultado = $stmt->execute();
+    // Updated table header to show extra fields
     echo "<h2>Envíos</h2>";
     echo "<table>
             <tr>
               <th>ID</th>
               <th>ID de Envío</th>
               <th>Datos</th>
-              <th>Enviado el</th>
+              <th>Fecha y Hora</th>
+              <th>Epoch</th>
+              <th>IP</th>
+              <th>User Agent</th>
             </tr>";
-    while ($row = $resultado->fetchArray(SQLITE3_ASSOC)) {
+    while ($row = $db->query("SELECT * FROM submissions WHERE form_id = " . intval($form_id) . " ORDER BY id DESC")->fetchArray(SQLITE3_ASSOC)) {
          echo "<tr>";
          echo "<td>" . $row['id'] . "</td>";
          echo "<td>" . htmlspecialchars($row['unique_id']) . "</td>";
-         $data = json_decode($row['data'], true);
          echo "<td>";
+         $data = json_decode($row['data'], true);
          if (is_array($data)) {
              foreach ($data as $label => $value) {
                  // If it's a file path, show a link
@@ -643,7 +653,10 @@ function admin_view_submissions($form_id) {
              echo htmlspecialchars($row['data']);
          }
          echo "</td>";
-         echo "<td>" . $row['created_at'] . "</td>";
+         echo "<td>" . htmlspecialchars($row['datetime']) . "</td>";
+         echo "<td>" . htmlspecialchars($row['epoch']) . "</td>";
+         echo "<td>" . htmlspecialchars($row['ip']) . "</td>";
+         echo "<td>" . htmlspecialchars($row['user_agent']) . "</td>";
          echo "</tr>";
     }
     echo "</table>";
