@@ -18,14 +18,14 @@ function detect_malicious_input($data) {
     return false;
 }
 
-function sanitize_input($input_array) {
-    foreach ($input_array as $key => $value) {
-        if (is_array($value)) {
+function sanitize_input(&$input) {
+    if (is_array($input)) {
+        foreach ($input as $key => &$value) {
             sanitize_input($value);
-        } else {
-            if (detect_malicious_input($value)) {
-                die("Security alert: Malicious input detected!");
-            }
+        }
+    } else {
+        if (detect_malicious_input($input)) {
+            die("Security alert: Malicious input detected!");
         }
     }
 }
@@ -36,17 +36,18 @@ $data = [
     'POST' => $_POST,
     'PUT' => [],
     'DELETE' => [],
-    'RAW' => file_get_contents("php://input")
+    'RAW' => file_get_contents("php://input") // RAW is a string, not an array
 ];
 
 // Handle PUT and DELETE requests
 if ($_SERVER['REQUEST_METHOD'] === 'PUT' || $_SERVER['REQUEST_METHOD'] === 'DELETE') {
-    parse_str(file_get_contents("php://input"), $data[$_SERVER['REQUEST_METHOD']]);
+    parse_str($data['RAW'], $parsed_input);
+    $data[$_SERVER['REQUEST_METHOD']] = $parsed_input;
 }
 
 // Sanitize all received data
-foreach ($data as $input) {
-    sanitize_input($input);
+foreach ($data as $key => &$value) {
+    sanitize_input($value);
 }
 
 
