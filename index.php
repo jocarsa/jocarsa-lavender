@@ -1,6 +1,57 @@
 <?php
 session_start();
 
+function detect_malicious_input($data) {
+    $patterns = [
+        '/<script.*?>.*?<\/script>/i',  // XSS
+        '/javascript:/i',                // XSS
+        '/on[a-z]+\s*=\s*"[^"]*"/i', // XSS
+        '/\b(select|union|insert|update|delete|drop|alter|truncate)\b.*?(from|into|table|database)/i' // SQL Injection
+    ];
+    
+    foreach ($patterns as $pattern) {
+        if (preg_match($pattern, $data)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function sanitize_input($input_array) {
+    foreach ($input_array as $key => $value) {
+        if (is_array($value)) {
+            sanitize_input($value);
+        } else {
+            if (detect_malicious_input($value)) {
+                die("Security alert: Malicious input detected!");
+            }
+        }
+    }
+}
+
+// Get data from GET, POST, PUT, DELETE, and php://input
+$data = [
+    'GET' => $_GET,
+    'POST' => $_POST,
+    'PUT' => [],
+    'DELETE' => [],
+    'RAW' => file_get_contents("php://input")
+];
+
+// Handle PUT and DELETE requests
+if ($_SERVER['REQUEST_METHOD'] === 'PUT' || $_SERVER['REQUEST_METHOD'] === 'DELETE') {
+    parse_str(file_get_contents("php://input"), $data[$_SERVER['REQUEST_METHOD']]);
+}
+
+// Sanitize all received data
+foreach ($data as $input) {
+    sanitize_input($input);
+}
+
+// Output the received data for debugging (Remove this in production)
+echo json_encode($data, JSON_PRETTY_PRINT);
+
+
 define('APP_NAME', 'jocarsa | lavender');
 
 // Open (or create) the SQLite database in the same directory
