@@ -4,7 +4,7 @@ session_start();
 define('APP_NAME', 'jocarsa | lavender');
 
 // Open (or create) the SQLite database in the same directory
-$db = new SQLite3('db.sqlite');
+$db = new SQLite3('../databases/lavender.sqlite');
 
 // Initialize the DB (create tables if needed, add default user, etc.)
 inicializar_db($db);
