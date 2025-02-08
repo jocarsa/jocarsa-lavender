@@ -4,7 +4,7 @@ session_start();
 define('APP_NAME', 'jocarsa | lavender');
 
 // Open (or create) the SQLite database in the same directory
-$db = new SQLite3('../databases/lavender.sqlite');
+$db = new SQLite3('db.sqlite');
 
 // Initialize the DB (create tables if needed, add default user, etc.)
 inicializar_db($db);
@@ -34,7 +34,6 @@ function inicializar_db($db) {
     )");
 
     // Controls table (fields)
-    // Using field_values instead of "values" (reserved word)
     $db->exec("CREATE TABLE IF NOT EXISTS controls (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         form_id INTEGER,
@@ -48,7 +47,7 @@ function inicializar_db($db) {
         field_values TEXT
     )");
 
-    // Submissions table (with extra fields)
+    // Submissions table with extra fields
     $db->exec("CREATE TABLE IF NOT EXISTS submissions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         form_id INTEGER,
@@ -582,7 +581,6 @@ function admin_edit_form($form_id) {
              if (!empty($row['field_values'])) {
                 echo " [Valores: " . htmlspecialchars($row['field_values']) . "]";
              }
-             // Add links to edit and delete this field
              echo " <a href='?admin=editfield&id=" . $row['id'] . "'>Editar</a> | 
                     <a href='?admin=deletefield&id=" . $row['id'] . "'>Eliminar</a>";
              echo "</li>";
@@ -595,6 +593,8 @@ function admin_edit_form($form_id) {
 
 function admin_view_submissions($form_id) {
     global $db;
+    
+    // Retrieve the form details.
     $stmt = $db->prepare("SELECT * FROM forms WHERE id = :id");
     $stmt->bindValue(':id', $form_id, SQLITE3_INTEGER);
     $form = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
@@ -602,6 +602,7 @@ function admin_view_submissions($form_id) {
          echo "Formulario no encontrado.";
          exit;
     }
+    
     html_header("Envíos para " . $form['title'] . " - " . APP_NAME);
     admin_menu();
     echo "<div id='content'>";
@@ -616,44 +617,74 @@ function admin_view_submissions($form_id) {
               <th>IP</th>
               <th>User Agent</th>
             </tr>";
+    
+    // Run the query once and store its result.
     $query = "SELECT * FROM submissions WHERE form_id = " . intval($form_id) . " ORDER BY id DESC";
-    while ($row = $db->query($query)->fetchArray(SQLITE3_ASSOC)) {
+    $result = $db->query($query);
+    
+    while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
          echo "<tr>";
          echo "<td>" . $row['id'] . "</td>";
          echo "<td>" . htmlspecialchars($row['unique_id']) . "</td>";
-         echo "<td>";
+         
+         // Build the full HTML for the data column.
+         $fullData = "";
          $data = json_decode($row['data'], true);
          if (is_array($data)) {
              foreach ($data as $label => $value) {
                  if (strpos($value, 'media/') === 0) {
                      $filename = basename($value);
-                     echo "<strong>" . htmlspecialchars($label) . ":</strong> 
-                           <a href='" . htmlspecialchars($value) . "' target='_blank'>" . htmlspecialchars($filename) . "</a><br>";
+                     $fullData .= "<strong>" . htmlspecialchars($label) . ":</strong> <a href='" 
+                                 . htmlspecialchars($value) . "' target='_blank'>" 
+                                 . htmlspecialchars($filename) . "</a><br>";
                  } else {
-                     echo "<strong>" . htmlspecialchars($label) . ":</strong> " . htmlspecialchars($value) . "<br>";
+                     $fullData .= "<strong>" . htmlspecialchars($label) . ":</strong> " . htmlspecialchars($value) . "<br>";
                  }
              }
          } else {
-             echo htmlspecialchars($row['data']);
+             $fullData = htmlspecialchars($row['data']);
          }
-         echo "</td>";
+         
+         // If the plain text version of fullData exceeds 200 characters, show a preview.
+         if (strlen(strip_tags($fullData)) > 200) {
+             $previewText = substr(strip_tags($fullData), 0, 200) . "...";
+             // Two divs: one for the preview and one for the full content.
+             $dataColumn = "<div id='preview{$row['id']}'>" . nl2br(htmlspecialchars($previewText)) 
+                         . " <a href='javascript:void(0);' onclick='showFull(\"{$row['id']}\");'>Ver más</a></div>";
+             $dataColumn .= "<div id='full{$row['id']}' style='display:none;'>" . $fullData 
+                         . " <a href='javascript:void(0);' onclick='showPreview(\"{$row['id']}\");'>Ver menos</a></div>";
+         } else {
+             $dataColumn = $fullData;
+         }
+         
+         echo "<td>" . $dataColumn . "</td>";
          echo "<td>" . htmlspecialchars($row['datetime']) . "</td>";
          echo "<td>" . htmlspecialchars($row['epoch']) . "</td>";
          echo "<td>" . htmlspecialchars($row['ip']) . "</td>";
          echo "<td>" . htmlspecialchars($row['user_agent']) . "</td>";
          echo "</tr>";
     }
+    
     echo "</table>";
+    
+    // JavaScript functions to toggle between the preview and full data.
+    echo "<script>
+    function showFull(id) {
+         document.getElementById('preview' + id).style.display = 'none';
+         document.getElementById('full' + id).style.display = 'block';
+    }
+    function showPreview(id) {
+         document.getElementById('full' + id).style.display = 'none';
+         document.getElementById('preview' + id).style.display = 'block';
+    }
+    </script>";
+    
     echo "</div>";
     html_footer();
 }
 
-// ---------------------
-// New Admin Functions for Removing/Editing Controls
-// ---------------------
 function admin_delete_form($form_id) {
     global $db;
-    // If no confirmation, show confirmation page
     if (!isset($_GET['confirm'])) {
         html_header("Confirmar eliminación de formulario - " . APP_NAME);
         admin_menu();
@@ -680,7 +711,6 @@ function admin_delete_form($form_id) {
 
 function admin_edit_field($field_id) {
     global $db;
-    // Retrieve the field data
     $stmt = $db->prepare("SELECT * FROM controls WHERE id = :id");
     $stmt->bindValue(':id', $field_id, SQLITE3_INTEGER);
     $field = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
