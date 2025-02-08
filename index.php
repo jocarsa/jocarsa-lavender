@@ -355,6 +355,26 @@ function manejar_admin() {
          exit;
     }
 
+    // New admin actions: view a single submission and delete a submission
+    if ($accion == 'viewsubmission') {
+         if (!isset($_GET['id'])) {
+             echo "ID de envío no especificado.";
+             exit;
+         }
+         $submission_id = intval($_GET['id']);
+         admin_view_submission($submission_id);
+         exit;
+    }
+    if ($accion == 'deletesubmission') {
+         if (!isset($_GET['id'])) {
+             echo "ID de envío no especificado.";
+             exit;
+         }
+         $submission_id = intval($_GET['id']);
+         admin_delete_submission($submission_id);
+         exit;
+    }
+
     // All other admin actions require login
     requiere_login();
 
@@ -611,74 +631,51 @@ function admin_view_submissions($form_id) {
             <tr>
               <th>ID</th>
               <th>ID de Envío</th>
-              <th>Datos</th>
+              <th>Vista Previa de Datos</th>
               <th>Fecha y Hora</th>
               <th>Epoch</th>
               <th>IP</th>
               <th>User Agent</th>
+              <th>Acciones</th>
             </tr>";
     
-    // Run the query once and store its result.
     $query = "SELECT * FROM submissions WHERE form_id = " . intval($form_id) . " ORDER BY id DESC";
     $result = $db->query($query);
     
     while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
-         echo "<tr>";
-         echo "<td>" . $row['id'] . "</td>";
-         echo "<td>" . htmlspecialchars($row['unique_id']) . "</td>";
-         
-         // Build the full HTML for the data column.
-         $fullData = "";
+         // Build a simple preview of the submission data (first 100 characters)
          $data = json_decode($row['data'], true);
+         $fullData = "";
          if (is_array($data)) {
              foreach ($data as $label => $value) {
                  if (strpos($value, 'media/') === 0) {
                      $filename = basename($value);
-                     $fullData .= "<strong>" . htmlspecialchars($label) . ":</strong> <a href='" 
-                                 . htmlspecialchars($value) . "' target='_blank'>" 
-                                 . htmlspecialchars($filename) . "</a><br>";
+                     $fullData .= $label . ": [Archivo: " . $filename . "] ";
                  } else {
-                     $fullData .= "<strong>" . htmlspecialchars($label) . ":</strong> " . htmlspecialchars($value) . "<br>";
+                     $fullData .= $label . ": " . $value . " ";
                  }
              }
          } else {
-             $fullData = htmlspecialchars($row['data']);
+             $fullData = $row['data'];
          }
+         $previewText = (strlen($fullData) > 100) ? substr($fullData, 0, 100) . "..." : $fullData;
          
-         // If the plain text version of fullData exceeds 200 characters, show a preview.
-         if (strlen(strip_tags($fullData)) > 200) {
-             $previewText = substr(strip_tags($fullData), 0, 200) . "...";
-             // Two divs: one for the preview and one for the full content.
-             $dataColumn = "<div id='preview{$row['id']}'>" . nl2br(htmlspecialchars($previewText)) 
-                         . " <a href='javascript:void(0);' onclick='showFull(\"{$row['id']}\");'>Ver más</a></div>";
-             $dataColumn .= "<div id='full{$row['id']}' style='display:none;'>" . $fullData 
-                         . " <a href='javascript:void(0);' onclick='showPreview(\"{$row['id']}\");'>Ver menos</a></div>";
-         } else {
-             $dataColumn = $fullData;
-         }
-         
-         echo "<td>" . $dataColumn . "</td>";
+         echo "<tr>";
+         echo "<td>" . $row['id'] . "</td>";
+         echo "<td>" . htmlspecialchars($row['unique_id']) . "</td>";
+         echo "<td>" . htmlspecialchars($previewText) . "</td>";
          echo "<td>" . htmlspecialchars($row['datetime']) . "</td>";
          echo "<td>" . htmlspecialchars($row['epoch']) . "</td>";
          echo "<td>" . htmlspecialchars($row['ip']) . "</td>";
          echo "<td>" . htmlspecialchars($row['user_agent']) . "</td>";
+         echo "<td>
+                 <a href='?admin=viewsubmission&id=" . $row['id'] . "'>Ver Detalles</a> | 
+                 <a href='?admin=deletesubmission&id=" . $row['id'] . "'>Eliminar</a>
+               </td>";
          echo "</tr>";
     }
     
     echo "</table>";
-    
-    // JavaScript functions to toggle between the preview and full data.
-    echo "<script>
-    function showFull(id) {
-         document.getElementById('preview' + id).style.display = 'none';
-         document.getElementById('full' + id).style.display = 'block';
-    }
-    function showPreview(id) {
-         document.getElementById('full' + id).style.display = 'none';
-         document.getElementById('preview' + id).style.display = 'block';
-    }
-    </script>";
-    
     echo "</div>";
     html_footer();
 }
@@ -827,6 +824,106 @@ function admin_delete_field($field_id) {
     $stmt->bindValue(':id', $field_id, SQLITE3_INTEGER);
     $stmt->execute();
     header("Location: ?admin=editform&id=" . $form_id);
+    exit;
+}
+
+// ---------------------
+// New Functions for Submission Details and Deletion
+// ---------------------
+
+// This function displays a single submission in a vertical, readable layout.
+function admin_view_submission($submission_id) {
+    global $db;
+    $stmt = $db->prepare("SELECT * FROM submissions WHERE id = :id");
+    $stmt->bindValue(':id', $submission_id, SQLITE3_INTEGER);
+    $submission = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+    if (!$submission) {
+         echo "Envío no encontrado.";
+         exit;
+    }
+    // Optionally, fetch form info
+    $stmt = $db->prepare("SELECT * FROM forms WHERE id = :id");
+    $stmt->bindValue(':id', $submission['form_id'], SQLITE3_INTEGER);
+    $form = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+    
+    html_header("Detalles del Envío - " . APP_NAME);
+    admin_menu();
+    echo "<div id='content'>";
+    echo "<h2>Detalles del Envío</h2>";
+    echo "<p><strong>ID de Envío:</strong> " . htmlspecialchars($submission['unique_id']) . "</p>";
+    echo "<p><strong>Fecha y Hora:</strong> " . htmlspecialchars($submission['datetime']) . "</p>";
+    echo "<p><strong>Epoch:</strong> " . htmlspecialchars($submission['epoch']) . "</p>";
+    echo "<p><strong>IP:</strong> " . htmlspecialchars($submission['ip']) . "</p>";
+    echo "<p><strong>User Agent:</strong> " . htmlspecialchars($submission['user_agent']) . "</p>";
+    
+    // Build the vertical report for the submission data
+    $data = json_decode($submission['data'], true);
+    if (is_array($data)) {
+         echo "<div class='submission-report'>";
+         foreach ($data as $label => $value) {
+              echo "<div class='submission-field'>";
+              echo "<span class='submission-label'>" . htmlspecialchars($label) . ":</span> ";
+              if (strpos($value, 'media/') === 0) {
+                   $filename = basename($value);
+                   echo "<a href='" . htmlspecialchars($value) . "' target='_blank'>" . htmlspecialchars($filename) . "</a>";
+              } else {
+                   echo htmlspecialchars($value);
+              }
+              echo "</div>";
+         }
+         echo "</div>";
+    } else {
+         echo "<p>" . htmlspecialchars($submission['data']) . "</p>";
+    }
+    echo "<p><a href='?admin=viewsubmissions&id=" . $submission['form_id'] . "'>Volver a Envíos</a></p>";
+    echo "</div>";
+    
+    // Inline CSS for the vertical report (you can also add these rules to your external CSS)
+    echo "<style>
+    .submission-report {
+         background: #f9f9f9;
+         padding: 20px;
+         margin-top: 20px;
+         border: 1px solid #ddd;
+         border-radius: 5px;
+    }
+    .submission-field {
+         margin-bottom: 10px;
+    }
+    .submission-label {
+         font-weight: bold;
+         color: #333;
+    }
+    </style>";
+    
+    html_footer();
+}
+
+// This function deletes a single submission (after confirmation)
+function admin_delete_submission($submission_id) {
+    global $db;
+    $stmt = $db->prepare("SELECT * FROM submissions WHERE id = :id");
+    $stmt->bindValue(':id', $submission_id, SQLITE3_INTEGER);
+    $submission = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+    if (!$submission) {
+         echo "Envío no encontrado.";
+         exit;
+    }
+    $form_id = $submission['form_id'];
+    if (!isset($_GET['confirm'])) {
+         html_header("Confirmar eliminación de envío - " . APP_NAME);
+         admin_menu();
+         echo "<div id='content'>";
+         echo "<p>¿Estás seguro de que deseas eliminar este envío? (ID de Envío: " . htmlspecialchars($submission['unique_id']) . ")</p>";
+         echo "<a href='?admin=deletesubmission&id=" . $submission_id . "&confirm=1'>Sí, eliminar</a> | <a href='?admin=viewsubmissions&id=" . $form_id . "'>Cancelar</a>";
+         echo "</div>";
+         html_footer();
+         exit;
+    }
+    $stmt = $db->prepare("DELETE FROM submissions WHERE id = :id");
+    $stmt->bindValue(':id', $submission_id, SQLITE3_INTEGER);
+    $stmt->execute();
+    header("Location: ?admin=viewsubmissions&id=" . $form_id);
     exit;
 }
 ?>
