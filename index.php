@@ -1,6 +1,7 @@
 <?php
 session_start();
 
+
 function detect_malicious_input($data) {
     $patterns = [
         '/<script.*?>.*?<\/script>/i',  // XSS
@@ -48,8 +49,7 @@ foreach ($data as $input) {
     sanitize_input($input);
 }
 
-// Output the received data for debugging (Remove this in production)
-echo json_encode($data, JSON_PRETTY_PRINT);
+
 
 
 define('APP_NAME', 'jocarsa | lavender');
