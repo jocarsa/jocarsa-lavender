@@ -1,12 +1,14 @@
 <?php
 session_start();
 
-
+// ---------------------
+// Security Functions
+// ---------------------
 function detect_malicious_input($data) {
     $patterns = [
         '/<script.*?>.*?<\/script>/i',  // XSS
         '/javascript:/i',                // XSS
-        '/on[a-z]+\s*=\s*"[^"]*"/i', // XSS
+        '/on[a-z]+\s*=\s*"[^"]*"/i',      // XSS
         '/\b(select|union|insert|update|delete|drop|alter|truncate)\b.*?(from|into|table|database)/i' // SQL Injection
     ];
     
@@ -30,7 +32,9 @@ function sanitize_input(&$input) {
     }
 }
 
-// Get data from GET, POST, PUT, DELETE, and php://input
+// ---------------------
+// Retrieve and Sanitize Input Data
+// ---------------------
 $data = [
     'GET' => $_GET,
     'POST' => $_POST,
@@ -39,26 +43,22 @@ $data = [
     'RAW' => file_get_contents("php://input") // RAW is a string, not an array
 ];
 
-// Handle PUT and DELETE requests
 if ($_SERVER['REQUEST_METHOD'] === 'PUT' || $_SERVER['REQUEST_METHOD'] === 'DELETE') {
     parse_str($data['RAW'], $parsed_input);
     $data[$_SERVER['REQUEST_METHOD']] = $parsed_input;
 }
 
-// Sanitize all received data
 foreach ($data as $key => &$value) {
     sanitize_input($value);
 }
 
-
-
-
+// ---------------------
+// Configuration and Database Initialization
+// ---------------------
 define('APP_NAME', 'jocarsa | lavender');
 
-// Open (or create) the SQLite database in the same directory
+// Open (or create) the SQLite database
 $db = new SQLite3('../databases/lavender.sqlite');
-
-// Initialize the DB (create tables if needed, add default user, etc.)
 inicializar_db($db);
 
 function inicializar_db($db) {
@@ -85,7 +85,20 @@ function inicializar_db($db) {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )");
 
-    // Controls table (fields)
+    // New table: form_owners to record the owner of each form.
+    $db->exec("CREATE TABLE IF NOT EXISTS form_owners (
+        form_id INTEGER PRIMARY KEY,
+        username TEXT,
+        FOREIGN KEY (form_id) REFERENCES forms(id)
+    )");
+
+    // Automatically assign any unowned forms to user "jocarsa"
+    $db->exec("INSERT OR IGNORE INTO form_owners (form_id, username)
+            SELECT id, 'jocarsa'
+            FROM forms
+            WHERE id NOT IN (SELECT form_id FROM form_owners)");
+
+    // Controls (fields) table
     $db->exec("CREATE TABLE IF NOT EXISTS controls (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         form_id INTEGER,
@@ -99,7 +112,7 @@ function inicializar_db($db) {
         field_values TEXT
     )");
 
-    // Submissions table with extra fields
+    // Submissions table
     $db->exec("CREATE TABLE IF NOT EXISTS submissions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         form_id INTEGER,
@@ -149,7 +162,7 @@ function html_footer() {
   <footer id='footer'>
     <p>&copy; " . date("Y") . " " . APP_NAME . "</p>
   </footer>
-</div> <!-- Fin wrapper -->
+</div>
 </body>
 </html>";
 }
@@ -191,7 +204,7 @@ function manejar_formulario_publico($hash) {
     global $db;
     html_header("Completar Formulario - " . APP_NAME);
 
-    // Find the form by its unique hash
+    // Look up the form by its unique hash.
     $stmt = $db->prepare("SELECT * FROM forms WHERE hash = :hash");
     $stmt->bindValue(':hash', $hash, SQLITE3_TEXT);
     $form = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
@@ -201,7 +214,7 @@ function manejar_formulario_publico($hash) {
         exit;
     }
 
-    // Get all controls for this form
+    // Get all controls for this form.
     $stmt = $db->prepare("SELECT * FROM controls WHERE form_id = :form_id");
     $stmt->bindValue(':form_id', $form['id'], SQLITE3_INTEGER);
     $resultado = $stmt->execute();
@@ -210,7 +223,7 @@ function manejar_formulario_publico($hash) {
          $controles[] = $row;
     }
 
-    // Always use multipart/form-data (for possible file uploads)
+    // Process form submission.
     if ($_SERVER['REQUEST_METHOD'] == 'POST') {
          if (!is_dir('media')) {
              mkdir('media');
@@ -262,7 +275,7 @@ function manejar_formulario_publico($hash) {
              $datos_envio[$control['field_title']] = $valor;
          }
 
-         // Extra submission details
+         // Extra submission details.
          $unique_id = uniqid("env_", true);
          $submission_datetime = date("Y-m-d H:i:s");
          $submission_epoch = time();
@@ -284,14 +297,13 @@ function manejar_formulario_publico($hash) {
          exit;
     }
 
-    // Show the form
+    // Display the form.
     echo "<div id='content'>";
     echo "<h2>" . htmlspecialchars($form['title']) . "</h2>";
     echo "<form method='post' id='publicForm' enctype='multipart/form-data'>";
     foreach ($controles as $control) {
          echo "<div class='form-field'>";
-         echo "<label>" . htmlspecialchars($control['field_title']);
-         echo ($control['required'] ? " *" : "") . ":</label><br>";
+         echo "<label>" . htmlspecialchars($control['field_title']) . ($control['required'] ? " *" : "") . ":</label><br>";
          if (!empty($control['description'])) {
              echo "<small>" . htmlspecialchars($control['description']) . "</small><br>";
          }
@@ -407,7 +419,7 @@ function manejar_admin() {
          exit;
     }
 
-    // New admin actions: view a single submission and delete a submission
+    // View a single submission and delete a submission
     if ($accion == 'viewsubmission') {
          if (!isset($_GET['id'])) {
              echo "ID de envío no especificado.";
@@ -427,7 +439,7 @@ function manejar_admin() {
          exit;
     }
 
-    // All other admin actions require login
+    // All other admin actions require login.
     requiere_login();
 
     if ($accion == 'dashboard') {
@@ -487,7 +499,15 @@ function admin_dashboard() {
     html_header("Panel de Control - " . APP_NAME);
     admin_menu();
     echo "<div id='content'>";
-    $resultado = $db->query("SELECT * FROM forms ORDER BY id DESC");
+    
+    $currentUser = $_SESSION['user'];
+    $stmt = $db->prepare("SELECT f.* FROM forms f 
+                          JOIN form_owners fo ON f.id = fo.form_id 
+                          WHERE fo.username = :username 
+                          ORDER BY f.id DESC");
+    $stmt->bindValue(':username', $currentUser, SQLITE3_TEXT);
+    $resultado = $stmt->execute();
+    
     echo "<h2>Tus Formularios</h2>";
     echo "<table>
             <tr>
@@ -530,6 +550,14 @@ function admin_new_form() {
          $stmt->bindValue(':hash', $hash, SQLITE3_TEXT);
          $stmt->bindValue(':id', $form_id, SQLITE3_INTEGER);
          $stmt->execute();
+
+         // Assign the new form to the currently logged-in user.
+         $currentUser = isset($_SESSION['user']) ? $_SESSION['user'] : 'jocarsa';
+         $stmt = $db->prepare("INSERT INTO form_owners (form_id, username) VALUES (:form_id, :username)");
+         $stmt->bindValue(':form_id', $form_id, SQLITE3_INTEGER);
+         $stmt->bindValue(':username', $currentUser, SQLITE3_TEXT);
+         $stmt->execute();
+
          header("Location: ?admin=editform&id=" . $form_id);
          exit;
     }
@@ -544,6 +572,16 @@ function admin_new_form() {
 
 function admin_edit_form($form_id) {
     global $db;
+    
+    // Check form ownership.
+    $stmt = $db->prepare("SELECT username FROM form_owners WHERE form_id = :form_id");
+    $stmt->bindValue(':form_id', $form_id, SQLITE3_INTEGER);
+    $owner = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+    if (!$owner || $owner['username'] != $_SESSION['user']) {
+         echo "No tienes permiso para editar este formulario.";
+         exit;
+    }
+    
     $stmt = $db->prepare("SELECT * FROM forms WHERE id = :id");
     $stmt->bindValue(':id', $form_id, SQLITE3_INTEGER);
     $form = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
@@ -556,7 +594,7 @@ function admin_edit_form($form_id) {
     echo "<div id='content'>";
     echo "<p class='url'>URL del Formulario Externo: <a href='?form=" . htmlspecialchars($form['hash']) . "' target='_blank'>?form=" . htmlspecialchars($form['hash']) . "</a></p>";
 
-    // Process adding new field
+    // Process adding a new field.
     if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['field_title'])) {
          $field_title = $_POST['field_title'];
          $description = isset($_POST['description']) ? $_POST['description'] : '';
@@ -594,7 +632,7 @@ function admin_edit_form($form_id) {
          exit;
     }
 
-    // New field form
+    // New field form.
     echo "<h2>Agregar Nuevo Campo</h2>";
     echo "<form method='post' id='newControl'>";
     echo "<label>Título del Campo:</label> <input type='text' name='field_title' required><br><br>";
@@ -625,7 +663,7 @@ function admin_edit_form($form_id) {
     echo "<button type='submit'>Agregar Campo</button>";
     echo "</form>";
 
-    // List current fields with edit and delete links
+    // List current fields with edit and delete links.
     echo "<h2>Campos Actuales</h2>";
     $stmt = $db->prepare("SELECT * FROM controls WHERE form_id = :form_id");
     $stmt->bindValue(':form_id', $form_id, SQLITE3_INTEGER);
@@ -666,6 +704,15 @@ function admin_edit_form($form_id) {
 function admin_view_submissions($form_id) {
     global $db;
     
+    // Check form ownership.
+    $stmt = $db->prepare("SELECT username FROM form_owners WHERE form_id = :form_id");
+    $stmt->bindValue(':form_id', $form_id, SQLITE3_INTEGER);
+    $owner = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+    if (!$owner || $owner['username'] != $_SESSION['user']) {
+         echo "No tienes permiso para ver los envíos de este formulario.";
+         exit;
+    }
+    
     // Retrieve the form details.
     $stmt = $db->prepare("SELECT * FROM forms WHERE id = :id");
     $stmt->bindValue(':id', $form_id, SQLITE3_INTEGER);
@@ -695,7 +742,6 @@ function admin_view_submissions($form_id) {
     $result = $db->query($query);
     
     while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
-         // Build a simple preview of the submission data (first 100 characters)
          $data = json_decode($row['data'], true);
          $fullData = "";
          if (is_array($data)) {
@@ -734,6 +780,16 @@ function admin_view_submissions($form_id) {
 
 function admin_delete_form($form_id) {
     global $db;
+    
+    // Check form ownership.
+    $stmt = $db->prepare("SELECT username FROM form_owners WHERE form_id = :form_id");
+    $stmt->bindValue(':form_id', $form_id, SQLITE3_INTEGER);
+    $owner = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+    if (!$owner || $owner['username'] != $_SESSION['user']) {
+         echo "No tienes permiso para eliminar este formulario.";
+         exit;
+    }
+    
     if (!isset($_GET['confirm'])) {
         html_header("Confirmar eliminación de formulario - " . APP_NAME);
         admin_menu();
@@ -744,7 +800,7 @@ function admin_delete_form($form_id) {
         html_footer();
         exit;
     }
-    // Delete related submissions, controls, then the form itself
+    // Delete related submissions, controls, and the form.
     $stmt = $db->prepare("DELETE FROM submissions WHERE form_id = :form_id");
     $stmt->bindValue(':form_id', $form_id, SQLITE3_INTEGER);
     $stmt->execute();
@@ -753,6 +809,10 @@ function admin_delete_form($form_id) {
     $stmt->execute();
     $stmt = $db->prepare("DELETE FROM forms WHERE id = :id");
     $stmt->bindValue(':id', $form_id, SQLITE3_INTEGER);
+    $stmt->execute();
+    // Delete the ownership record.
+    $stmt = $db->prepare("DELETE FROM form_owners WHERE form_id = :form_id");
+    $stmt->bindValue(':form_id', $form_id, SQLITE3_INTEGER);
     $stmt->execute();
     header("Location: ?admin=dashboard");
     exit;
@@ -768,6 +828,14 @@ function admin_edit_field($field_id) {
         exit;
     }
     $form_id = $field['form_id'];
+    // Check ownership for this field.
+    $stmt2 = $db->prepare("SELECT username FROM form_owners WHERE form_id = :form_id");
+    $stmt2->bindValue(':form_id', $form_id, SQLITE3_INTEGER);
+    $owner = $stmt2->execute()->fetchArray(SQLITE3_ASSOC);
+    if (!$owner || $owner['username'] != $_SESSION['user']) {
+         echo "No tienes permiso para editar este campo.";
+         exit;
+    }
     if ($_SERVER['REQUEST_METHOD'] == 'POST') {
        $field_title = $_POST['field_title'];
        $description = isset($_POST['description']) ? $_POST['description'] : '';
@@ -862,6 +930,14 @@ function admin_delete_field($field_id) {
         exit;
     }
     $form_id = $field['form_id'];
+    // Check ownership for this field.
+    $stmt2 = $db->prepare("SELECT username FROM form_owners WHERE form_id = :form_id");
+    $stmt2->bindValue(':form_id', $form_id, SQLITE3_INTEGER);
+    $owner = $stmt2->execute()->fetchArray(SQLITE3_ASSOC);
+    if (!$owner || $owner['username'] != $_SESSION['user']) {
+         echo "No tienes permiso para eliminar este campo.";
+         exit;
+    }
     if (!isset($_GET['confirm'])) {
         html_header("Confirmar eliminación de campo - " . APP_NAME);
         admin_menu();
@@ -880,10 +956,8 @@ function admin_delete_field($field_id) {
 }
 
 // ---------------------
-// New Functions for Submission Details and Deletion
+// Submission Detail and Deletion Functions
 // ---------------------
-
-// This function displays a single submission in a vertical, readable layout.
 function admin_view_submission($submission_id) {
     global $db;
     $stmt = $db->prepare("SELECT * FROM submissions WHERE id = :id");
@@ -893,7 +967,14 @@ function admin_view_submission($submission_id) {
          echo "Envío no encontrado.";
          exit;
     }
-    // Optionally, fetch form info
+    // Check ownership based on the form's owner.
+    $stmt = $db->prepare("SELECT username FROM form_owners WHERE form_id = :form_id");
+    $stmt->bindValue(':form_id', $submission['form_id'], SQLITE3_INTEGER);
+    $owner = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+    if (!$owner || $owner['username'] != $_SESSION['user']) {
+         echo "No tienes permiso para ver este envío.";
+         exit;
+    }
     $stmt = $db->prepare("SELECT * FROM forms WHERE id = :id");
     $stmt->bindValue(':id', $submission['form_id'], SQLITE3_INTEGER);
     $form = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
@@ -908,7 +989,6 @@ function admin_view_submission($submission_id) {
     echo "<p><strong>IP:</strong> " . htmlspecialchars($submission['ip']) . "</p>";
     echo "<p><strong>User Agent:</strong> " . htmlspecialchars($submission['user_agent']) . "</p>";
     
-    // Build the vertical report for the submission data
     $data = json_decode($submission['data'], true);
     if (is_array($data)) {
          echo "<div class='submission-report'>";
@@ -929,8 +1009,6 @@ function admin_view_submission($submission_id) {
     }
     echo "<p><a href='?admin=viewsubmissions&id=" . $submission['form_id'] . "'>Volver a Envíos</a></p>";
     echo "</div>";
-    
-    // Inline CSS for the vertical report (you can also add these rules to your external CSS)
     echo "<style>
     .submission-report {
          background: #f9f9f9;
@@ -947,11 +1025,9 @@ function admin_view_submission($submission_id) {
          color: #333;
     }
     </style>";
-    
     html_footer();
 }
 
-// This function deletes a single submission (after confirmation)
 function admin_delete_submission($submission_id) {
     global $db;
     $stmt = $db->prepare("SELECT * FROM submissions WHERE id = :id");
@@ -959,6 +1035,14 @@ function admin_delete_submission($submission_id) {
     $submission = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
     if (!$submission) {
          echo "Envío no encontrado.";
+         exit;
+    }
+    // Check ownership.
+    $stmt = $db->prepare("SELECT username FROM form_owners WHERE form_id = :form_id");
+    $stmt->bindValue(':form_id', $submission['form_id'], SQLITE3_INTEGER);
+    $owner = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+    if (!$owner || $owner['username'] != $_SESSION['user']) {
+         echo "No tienes permiso para eliminar este envío.";
          exit;
     }
     $form_id = $submission['form_id'];
