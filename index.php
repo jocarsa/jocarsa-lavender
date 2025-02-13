@@ -187,7 +187,12 @@ if (isset($_GET['form'])) {
 } elseif (isset($_GET['admin'])) {
     manejar_admin();
     exit;
+} elseif (isset($_GET['check'])) {
+    // NEW ROUTE: show the public submission data by unique_id
+    mostrar_envio_publico($_GET['check']);
+    exit;
 } else {
+    // Default route (home page)
     html_header("Bienvenido - " . APP_NAME);
     echo "<div id='content'>
             <p>Bienvenido a " . APP_NAME . ".</p>
@@ -271,6 +276,7 @@ function manejar_formulario_publico($hash) {
                  continue;
              }
 
+             // Default case: text, textarea, email, etc.
              $valor = isset($_POST[$nombre_campo]) ? $_POST[$nombre_campo] : '';
              $datos_envio[$control['field_title']] = $valor;
          }
@@ -292,21 +298,49 @@ function manejar_formulario_publico($hash) {
          $stmt->bindValue(':user_agent', $user_agent, SQLITE3_TEXT);
          $stmt->execute();
 
-         echo "<div id='content'><p>Gracias por tu envío. Tu ID de envío es: <strong>" . htmlspecialchars($unique_id) . "</strong></p></div>";
+         // Show thank you message + link to the public submission
+         echo "<div id='content'>";
+         echo "<p>Gracias por tu envío. Tu ID de envío es: <strong>" . htmlspecialchars($unique_id) . "</strong></p>";
+
+         // Build a link to ?check=$unique_id
+         $link = "?check=" . urlencode($unique_id);
+
+         echo "<p>Puedes ver o revisar tu envío aquí: 
+                <a href='" . htmlspecialchars($link) . "' target='_blank' id='publicSubmissionLink'>" 
+                . htmlspecialchars($link) . "</a>
+              </p>";
+         echo "<button type='button' onclick='copiarAlPortapapeles()'>Copiar Enlace</button>";
+
+         // Simple JavaScript for copy to clipboard
+         echo <<<HTML
+<script>
+function copiarAlPortapapeles() {
+    var link = document.getElementById('publicSubmissionLink').href;
+    navigator.clipboard.writeText(link).then(function() {
+        alert('¡Enlace copiado al portapapeles!');
+    }, function(err) {
+        alert('Error al copiar el enlace');
+    });
+}
+</script>
+HTML;
+
+         echo "</div>";
          html_footer();
          exit;
     }
 
-    // Display the form.
+    // Display the form if it's not a POST or if we haven't exited yet.
     echo "<div id='content'>";
     echo "<h2>" . htmlspecialchars($form['title']) . "</h2>";
     echo "<form method='post' id='publicForm' enctype='multipart/form-data'>";
     foreach ($controles as $control) {
          echo "<div class='form-field" . ($control['type'] === 'none' ? " none-type" : "") . "'>";
-         echo "<label>" . htmlspecialchars($control['field_title']) . ($control['required'] ? " *" : "") . ":</label>";
+         echo "<label>" . htmlspecialchars($control['field_title']) . ($control['required'] ? " *" : "") . ":<br>";
          if (!empty($control['description'])) {
              echo "<small>" . htmlspecialchars($control['description']) . "</small><br>";
          }
+         echo "</label>";
          $nombre_campo = "campo_" . $control['id'];
          $atributos = "";
          if (!empty($control['min_length'])) {
@@ -323,7 +357,7 @@ function manejar_formulario_publico($hash) {
          }
          switch ($control['type']) {
              case 'none':
-                 // No input, just skip
+                 // No input displayed
                  break;
              case 'textarea':
                  echo "<textarea name='" . htmlspecialchars($nombre_campo) . "' rows='4' {$atributos}></textarea>";
@@ -365,6 +399,7 @@ function manejar_formulario_publico($hash) {
                  echo "<input type='datetime-local' name='" . htmlspecialchars($nombre_campo) . "' {$atributos} />";
                  break;
              default:
+                 // text, email, password, number, url, etc.
                  $type = htmlspecialchars($control['type']);
                  echo "<input type='{$type}' name='" . htmlspecialchars($nombre_campo) . "' {$atributos} />";
                  break;
@@ -633,7 +668,7 @@ function admin_edit_form($form_id) {
          exit;
     }
 
-    // New field form.
+    // New field form
     echo "<h2>Agregar Nuevo Campo</h2>";
     echo "<form method='post' id='newControl'>";
     echo "<label>Título del Campo:</label> <input type='text' name='field_title' required><br><br>";
@@ -664,7 +699,7 @@ function admin_edit_form($form_id) {
     echo "<button type='submit'>Agregar Campo</button>";
     echo "</form>";
 
-    // List current fields with edit and delete links.
+    // List current fields
     echo "<h2>Campos Actuales</h2>";
     $stmt = $db->prepare("SELECT * FROM controls WHERE form_id = :form_id");
     $stmt->bindValue(':form_id', $form_id, SQLITE3_INTEGER);
@@ -1149,6 +1184,60 @@ function admin_delete_submission($submission_id) {
     $stmt->execute();
     header("Location: ?admin=viewsubmissions&id=" . $form_id);
     exit;
+}
+
+// ---------------------
+// NEW PUBLIC FUNCTION: View a submission by unique_id without login
+// ---------------------
+function mostrar_envio_publico($unique_id) {
+    global $db;
+    html_header("Ver Envío - " . APP_NAME);
+    echo "<div id='content'>";
+
+    // Lookup the submission by unique_id
+    $stmt = $db->prepare("SELECT * FROM submissions WHERE unique_id = :unique_id");
+    $stmt->bindValue(':unique_id', $unique_id, SQLITE3_TEXT);
+    $submission = $stmt->execute()->fetchArray(SQLITE3_ASSOC);
+
+    if (!$submission) {
+        echo "<p>No se encontró un envío con esa referencia.</p>";
+        echo "</div>";
+        html_footer();
+        return;
+    }
+
+    // (Optional) retrieve the form info to show its title
+    $stmtForm = $db->prepare("SELECT title FROM forms WHERE id = :form_id");
+    $stmtForm->bindValue(':form_id', $submission['form_id'], SQLITE3_INTEGER);
+    $form = $stmtForm->execute()->fetchArray(SQLITE3_ASSOC);
+
+    echo "<h2>Datos del Formulario: " . htmlspecialchars($form['title']) . "</h2>";
+    echo "<p><strong>ID de Envío:</strong> " . htmlspecialchars($submission['unique_id']) . "</p>";
+
+    $data = json_decode($submission['data'], true);
+    if (!is_array($data)) {
+        $data = [];
+    }
+
+    echo "<div class='submission-report'>";
+    // Show each label/value
+    foreach ($data as $label => $value) {
+        echo "<div class='submission-field'>";
+        echo "<span class='submission-label'>" . htmlspecialchars($label) . ":</span> ";
+        // If it's a file path in media/
+        if (strpos($value, 'media/') === 0) {
+            $filename = basename($value);
+            echo "<a href='" . htmlspecialchars($value) . "' target='_blank'>" . htmlspecialchars($filename) . "</a>";
+        } else {
+            echo htmlspecialchars($value);
+        }
+        echo "</div>";
+    }
+    echo "</div>";
+
+    echo "<p><em>Si necesitas realizar cambios, contacta al administrador.</em></p>";
+    echo "</div>";
+    html_footer();
 }
 ?>
 
