@@ -303,7 +303,7 @@ function manejar_formulario_publico($hash) {
     echo "<form method='post' id='publicForm' enctype='multipart/form-data'>";
     foreach ($controles as $control) {
          echo "<div class='form-field" . ($control['type'] === 'none' ? " none-type" : "") . "'>";
-         echo "<label>" . htmlspecialchars($control['field_title']) . ($control['required'] ? " *" : "") . ":</label><br>";
+         echo "<label>" . htmlspecialchars($control['field_title']) . ($control['required'] ? " *" : "") . ":</label>";
          if (!empty($control['description'])) {
              echo "<small>" . htmlspecialchars($control['description']) . "</small><br>";
          }
