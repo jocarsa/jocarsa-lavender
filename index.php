@@ -332,14 +332,14 @@ function manejar_formulario_publico($hash) {
                  $options = array_map('trim', explode(',', $control['field_values']));
                  foreach ($options as $opt) {
                      $optSafe = htmlspecialchars($opt);
-                     echo "<label><input type='checkbox' name='" . htmlspecialchars($nombre_campo) . "[]' value='{$optSafe}'> {$optSafe}</label><br>";
+                     echo "<label><input type='checkbox' name='" . htmlspecialchars($nombre_campo) . "[]' value='{$optSafe}'> {$optSafe}</label>";
                  }
                  break;
              case 'radio':
                  $options = array_map('trim', explode(',', $control['field_values']));
                  foreach ($options as $opt) {
                      $optSafe = htmlspecialchars($opt);
-                     echo "<label><input type='radio' name='" . htmlspecialchars($nombre_campo) . "' value='{$optSafe}' {$atributos}> {$optSafe}</label><br>";
+                     echo "<label><input type='radio' name='" . htmlspecialchars($nombre_campo) . "' value='{$optSafe}' {$atributos}> {$optSafe}</label>";
                  }
                  break;
              case 'select':
