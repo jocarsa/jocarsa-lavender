@@ -7,8 +7,8 @@ session_start();
 function detect_malicious_input($data) {
     $patterns = [
         '/<script.*?>.*?<\/script>/i',  // XSS
-        '/javascript:/i',                // XSS
-        '/on[a-z]+\s*=\s*"[^"]*"/i',      // XSS
+        '/javascript:/i',               // XSS
+        '/on[a-z]+\s*=\s*"[^"]*"/i',     // XSS
         '/\b(select|union|insert|update|delete|drop|alter|truncate)\b.*?(from|into|table|database)/i' // SQL Injection
     ];
     
@@ -85,7 +85,7 @@ function inicializar_db($db) {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )");
 
-    // New table: form_owners to record the owner of each form.
+    // Form owners
     $db->exec("CREATE TABLE IF NOT EXISTS form_owners (
         form_id INTEGER PRIMARY KEY,
         username TEXT,
@@ -302,7 +302,7 @@ function manejar_formulario_publico($hash) {
     echo "<h2>" . htmlspecialchars($form['title']) . "</h2>";
     echo "<form method='post' id='publicForm' enctype='multipart/form-data'>";
     foreach ($controles as $control) {
-         echo "<div class='form-field'>";
+         echo "<div class='form-field" . ($control['type'] === 'none' ? " none-type" : "") . "'>";
          echo "<label>" . htmlspecialchars($control['field_title']) . ($control['required'] ? " *" : "") . ":</label><br>";
          if (!empty($control['description'])) {
              echo "<small>" . htmlspecialchars($control['description']) . "</small><br>";
@@ -323,6 +323,7 @@ function manejar_formulario_publico($hash) {
          }
          switch ($control['type']) {
              case 'none':
+                 // No input, just skip
                  break;
              case 'textarea':
                  echo "<textarea name='" . htmlspecialchars($nombre_campo) . "' rows='4' {$atributos}></textarea>";
@@ -726,46 +727,99 @@ function admin_view_submissions($form_id) {
     admin_menu();
     echo "<div id='content'>";
     echo "<h2>Envíos</h2>";
-    echo "<table>
-            <tr>
-              <th>ID</th>
-              <th>ID de Envío</th>
-              <th>Vista Previa de Datos</th>
-              <th>Fecha y Hora</th>
-              <th>Epoch</th>
-              <th>IP</th>
-              <th>User Agent</th>
-              <th>Acciones</th>
-            </tr>";
-    
+
+    // Get all controls to dynamically build columns for JSON data
+    $controls = [];
+    $stmtControls = $db->prepare("SELECT * FROM controls WHERE form_id = :form_id");
+    $stmtControls->bindValue(':form_id', $form_id, SQLITE3_INTEGER);
+    $resultControls = $stmtControls->execute();
+    while ($ctrl = $resultControls->fetchArray(SQLITE3_ASSOC)) {
+        $controls[] = $ctrl;
+    }
+
+    echo "<table id='submissionsTable'>";
+    echo "<thead>";
+
+    // --- First row: Filter inputs for each column ---
+    echo "<tr>";
+    // Filter for ID
+    echo "<th><input type='text' placeholder='Filtrar ID' onkeyup='filterTable()'></th>";
+    // Filter for ID de Envío
+    echo "<th><input type='text' placeholder='Filtrar ID de Envío' onkeyup='filterTable()'></th>";
+
+    // Filters for each dynamic control
+    foreach ($controls as $ctrl) {
+        echo "<th><input type='text' placeholder='Filtrar " . htmlspecialchars($ctrl['field_title']) . "' onkeyup='filterTable()'></th>";
+    }
+
+    // Filter for Fecha y Hora
+    echo "<th><input type='text' placeholder='Filtrar Fecha y Hora' onkeyup='filterTable()'></th>";
+    // Filter for Epoch
+    echo "<th><input type='text' placeholder='Filtrar Epoch' onkeyup='filterTable()'></th>";
+    // Filter for IP
+    echo "<th><input type='text' placeholder='Filtrar IP' onkeyup='filterTable()'></th>";
+    // Filter for User Agent
+    echo "<th><input type='text' placeholder='Filtrar User Agent' onkeyup='filterTable()'></th>";
+
+    // Acciones (no filter)
+    echo "<th></th>";
+    echo "</tr>";
+
+    // --- Second row: Column headers ---
+    echo "<tr>
+            <th>ID</th>
+            <th>ID de Envío</th>";
+    foreach ($controls as $ctrl) {
+        echo "<th>" . htmlspecialchars($ctrl['field_title']) . "</th>";
+    }
+    echo "  <th>Fecha y Hora</th>
+            <th>Epoch</th>
+            <th>IP</th>
+            <th>User Agent</th>
+            <th>Acciones</th>
+          </tr>";
+    echo "</thead>";
+    echo "<tbody>";
+
     $query = "SELECT * FROM submissions WHERE form_id = " . intval($form_id) . " ORDER BY id DESC";
     $result = $db->query($query);
     
     while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
+         // Parse the JSON data
          $data = json_decode($row['data'], true);
-         $fullData = "";
-         if (is_array($data)) {
-             foreach ($data as $label => $value) {
-                 if (strpos($value, 'media/') === 0) {
-                     $filename = basename($value);
-                     $fullData .= $label . ": [Archivo: " . $filename . "] ";
-                 } else {
-                     $fullData .= $label . ": " . $value . " ";
-                 }
-             }
-         } else {
-             $fullData = $row['data'];
+         if (!is_array($data)) {
+             $data = [];
          }
-         $previewText = (strlen($fullData) > 100) ? substr($fullData, 0, 100) . "..." : $fullData;
-         
+
          echo "<tr>";
-         echo "<td>" . $row['id'] . "</td>";
+         // ID
+         echo "<td>" . htmlspecialchars($row['id']) . "</td>";
+         // Unique ID
          echo "<td>" . htmlspecialchars($row['unique_id']) . "</td>";
-         echo "<td>" . htmlspecialchars($previewText) . "</td>";
+
+         // Render each control field as its own column
+         foreach ($controls as $ctrl) {
+             $fieldTitle = $ctrl['field_title'];
+             $value = isset($data[$fieldTitle]) ? $data[$fieldTitle] : "";
+             // If it's a file (media/...), show download link
+             if (strpos($value, 'media/') === 0) {
+                 $filename = basename($value);
+                 echo "<td><a href='" . htmlspecialchars($value) . "' target='_blank'>" . htmlspecialchars($filename) . "</a></td>";
+             } else {
+                 echo "<td>" . htmlspecialchars($value) . "</td>";
+             }
+         }
+
+         // Fecha y Hora
          echo "<td>" . htmlspecialchars($row['datetime']) . "</td>";
+         // Epoch
          echo "<td>" . htmlspecialchars($row['epoch']) . "</td>";
+         // IP
          echo "<td>" . htmlspecialchars($row['ip']) . "</td>";
+         // User Agent
          echo "<td>" . htmlspecialchars($row['user_agent']) . "</td>";
+
+         // Actions
          echo "<td>
                  <a href='?admin=viewsubmission&id=" . $row['id'] . "'>Ver Detalles</a> | 
                  <a href='?admin=deletesubmission&id=" . $row['id'] . "'>Eliminar</a>
@@ -773,8 +827,42 @@ function admin_view_submissions($form_id) {
          echo "</tr>";
     }
     
+    echo "</tbody>";
     echo "</table>";
     echo "</div>";
+
+    // JavaScript for filtering columns
+    echo "
+<script>
+function filterTable() {
+    var table = document.getElementById('submissionsTable');
+    var thead = table.getElementsByTagName('thead')[0];
+    var filterRow = thead.getElementsByTagName('tr')[0]; 
+    var filterInputs = filterRow.getElementsByTagName('input');
+    var tbody = table.getElementsByTagName('tbody')[0];
+    var tr = tbody.getElementsByTagName('tr');
+
+    // For each row in tbody
+    for (var i = 0; i < tr.length; i++) {
+        var showRow = true;
+        // For each filter input
+        for (var j = 0; j < filterInputs.length; j++) {
+            var input = filterInputs[j];
+            var filter = input.value.toLowerCase();
+            var td = tr[i].getElementsByTagName('td')[j];
+            if (td) {
+                var textValue = td.textContent || td.innerText;
+                if (filter !== '' && textValue.toLowerCase().indexOf(filter) === -1) {
+                    showRow = false;
+                    break;
+                }
+            }
+        }
+        tr[i].style.display = showRow ? '' : 'none';
+    }
+}
+</script>
+";
     html_footer();
 }
 
@@ -956,7 +1044,7 @@ function admin_delete_field($field_id) {
 }
 
 // ---------------------
-// Submission Detail and Deletion Functions
+// Submission Detail and Deletion
 // ---------------------
 function admin_view_submission($submission_id) {
     global $db;

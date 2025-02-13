@@ -2,7 +2,6 @@
 @import url('https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Ubuntu:ital,wght@0,300;0,400;0,500;0,700;1,300;1,400;1,500;1,700&display=swap');
 
-
 /* Reset básico */
 * {
   margin: 0;
@@ -16,16 +15,19 @@ body {
   background: #f5f7fa;
   color: #444;
   line-height: 1.6;
+  width: 100%;
+  min-height: 100vh;
 }
 
 /* Contenedor principal */
 #wrapper {
-  max-width: 1200px;
-  margin: 30px auto;
-  background: #fff;
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  background: #fff; 
+  border-radius: 0;
+  /* Removed box-shadow and margin constraints */
 }
 
 /* Cabecera */
@@ -177,33 +179,20 @@ button:focus {
   box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
 }
 
-/* ------------------------- */
-/* Type-specific tweaks */
-/* ------------------------- */
-
-/* Tipo "none" - sin input, solo se mostrará el label/description.
-   Por defecto, no requiere un estilo especial, 
-   pero puedes ocultar un input si existiera. */
+/* Tipo "none" - sin input */
 .form-field.none-type input,
 .form-field.none-type textarea,
 .form-field.none-type select {
   display: none;
 }
 
-/* Checkboxes y radios: un pequeño espacio y estilo inline */
+/* Checkboxes y radios */
 input[type="checkbox"],
 input[type="radio"] {
   width: auto;
   margin-right: 8px;
   margin-bottom: 8px;
   cursor: pointer;
-}
-
-.form-field label[for], /* If used for associated label */
-.form-field label input[type="checkbox"],
-.form-field label input[type="radio"] {
-  display: inline-block;
-  vertical-align: middle;
 }
 
 /* Tipo archivo */
@@ -218,7 +207,7 @@ input[type="file"] {
 }
 
 /* ------------------------- */
-/* Estilos específicos para el formulario de login */
+/* Estilos para el formulario de login */
 /* ------------------------- */
 #loginForm {
   max-width: 400px;
@@ -267,7 +256,7 @@ input[type="file"] {
 }
 
 /* ------------------------- */
-/* Estilos para la creación y edición de formularios */
+/* Estilos para la creación/edición de formularios */
 /* ------------------------- */
 #newForm,
 #newControl {
@@ -362,30 +351,32 @@ table tr:hover {
 #content {
   animation: fadeIn 0.5s ease-in-out;
 }
-.url{
-	padding:10px;
-	background:lavender;
-	border-radius:10px;
-	text-align:center;
+
+.url {
+  padding: 10px;
+  background: lavender;
+  border-radius: 10px;
+  text-align: center;
 }
-h1{
-	display: flex;
-	flex-direction: row;
-	flex-wrap: nowrap;
-	justify-content: center;
-	align-items: center;
-	align-content: stretch;
+
+h1 {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
 }
-h1 img{
-	width:60px;
+h1 img {
+  width: 60px;
 }
+
 /* ------------------------- */
 /* Responsive Design */
 /* ------------------------- */
 @media (max-width: 768px) {
   #wrapper {
-    margin: 15px;
+    margin: 0;
     border-radius: 0;
+    padding: 0;
   }
 
   #header h1 {
