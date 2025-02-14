@@ -161,6 +161,8 @@ function html_footer() {
     echo "
   <footer id='footer'>
     <p>&copy; " . date("Y") . " " . APP_NAME . "</p>
+    <link rel='stylesheet' href='https://jocarsa.github.io/jocarsa-snow/jocarsa%20%7C%20snow.css'>
+<script src='https://jocarsa.github.io/jocarsa-snow/jocarsa%20%7C%20snow.js'></script>
   </footer>
 </div>
 </body>
@@ -1240,6 +1242,5 @@ function mostrar_envio_publico($unique_id) {
     html_footer();
 }
 ?>
-<link rel="stylesheet" href="https://jocarsa.github.io/jocarsa-snow/jocarsa%20%7C%20snow.css">
-<script src="https://jocarsa.github.io/jocarsa-snow/jocarsa%20%7C%20snow.js"></script>
+
 
