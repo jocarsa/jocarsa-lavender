@@ -332,7 +332,7 @@ HTML;
          exit;
     }
 
-    // Display the form if it's not a POST or if we haven't exited yet.
+    // Display the form
     echo "<div id='content'>";
     echo "<h2>" . htmlspecialchars($form['title']) . "</h2>";
     echo "<form method='post' id='publicForm' enctype='multipart/form-data'>";
@@ -739,6 +739,9 @@ function admin_edit_form($form_id) {
     html_footer();
 }
 
+//
+// UPDATED admin_view_submissions FUNCTION WITH PIE CHARTS
+//
 function admin_view_submissions($form_id) {
     global $db;
     
@@ -777,32 +780,62 @@ function admin_view_submissions($form_id) {
     echo "<table id='submissionsTable'>";
     echo "<thead>";
 
-    // --- First row: Filter inputs for each column ---
+    // --- First row: Pie chart containers + Filter inputs for each column ---
     echo "<tr>";
-    // Filter for ID
-    echo "<th><input type='text' placeholder='Filtrar ID' onkeyup='filterTable()'></th>";
-    // Filter for ID de Envío
-    echo "<th><input type='text' placeholder='Filtrar ID de Envío' onkeyup='filterTable()'></th>";
+    // Column 0 => ID
+    echo "<th>
+            <div class='piechart-container' data-col='0'></div>
+            <input type='text' placeholder='Filtrar ID' onkeyup='filterTable()'>
+          </th>";
+    // Column 1 => Unique ID
+    echo "<th>
+            <div class='piechart-container' data-col='1'></div>
+            <input type='text' placeholder='Filtrar ID de Envío' onkeyup='filterTable()'>
+          </th>";
 
-    // Filters for each dynamic control
+    // For each dynamic control => columns 2, 3, etc.
+    $colIndex = 2;
     foreach ($controls as $ctrl) {
-        echo "<th><input type='text' placeholder='Filtrar " . htmlspecialchars($ctrl['field_title']) . "' onkeyup='filterTable()'></th>";
+        echo "<th>
+                <div class='piechart-container' data-col='{$colIndex}'></div>
+                <input type='text' placeholder='Filtrar " . htmlspecialchars($ctrl['field_title']) . "' onkeyup='filterTable()'>
+              </th>";
+        $colIndex++;
     }
 
-    // Filter for Fecha y Hora
-    echo "<th><input type='text' placeholder='Filtrar Fecha y Hora' onkeyup='filterTable()'></th>";
-    // Filter for Epoch
-    echo "<th><input type='text' placeholder='Filtrar Epoch' onkeyup='filterTable()'></th>";
-    // Filter for IP
-    echo "<th><input type='text' placeholder='Filtrar IP' onkeyup='filterTable()'></th>";
-    // Filter for User Agent
-    echo "<th><input type='text' placeholder='Filtrar User Agent' onkeyup='filterTable()'></th>";
+    // Next => datetime
+    echo "<th>
+            <div class='piechart-container' data-col='{$colIndex}'></div>
+            <input type='text' placeholder='Filtrar Fecha y Hora' onkeyup='filterTable()'>
+          </th>";
+    $colIndex++;
 
-    // Acciones (no filter)
+    // epoch
+    echo "<th>
+            <div class='piechart-container' data-col='{$colIndex}'></div>
+            <input type='text' placeholder='Filtrar Epoch' onkeyup='filterTable()'>
+          </th>";
+    $colIndex++;
+
+    // IP
+    echo "<th>
+            <div class='piechart-container' data-col='{$colIndex}'></div>
+            <input type='text' placeholder='Filtrar IP' onkeyup='filterTable()'>
+          </th>";
+    $colIndex++;
+
+    // User Agent
+    echo "<th>
+            <div class='piechart-container' data-col='{$colIndex}'></div>
+            <input type='text' placeholder='Filtrar User Agent' onkeyup='filterTable()'>
+          </th>";
+    $colIndex++;
+
+    // Actions => no filter/piechart
     echo "<th></th>";
     echo "</tr>";
 
-    // --- Second row: Column headers ---
+    // --- Second row: Actual column headers ---
     echo "<tr>
             <th>ID</th>
             <th>ID de Envío</th>";
@@ -818,76 +851,73 @@ function admin_view_submissions($form_id) {
     echo "</thead>";
     echo "<tbody>";
 
+    // Fetch all submissions for this form
     $query = "SELECT * FROM submissions WHERE form_id = " . intval($form_id) . " ORDER BY id DESC";
     $result = $db->query($query);
     
     while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
-		 // Parse the JSON data
-		 $data = json_decode($row['data'], true);
-		 if (!is_array($data)) {
-		     $data = [];
-		 }
+        // Parse the JSON data
+        $data = json_decode($row['data'], true);
+        if (!is_array($data)) {
+            $data = [];
+        }
 
-		 echo '<tr>';
-		 // ID
-		 echo '<td>' . htmlspecialchars($row['id']) . '</td>';
-		 // Unique ID
-		 echo '<td>' . htmlspecialchars($row['unique_id']) . '</td>';
+        echo '<tr>';
+        // Column 0 => ID
+        echo '<td>' . htmlspecialchars($row['id']) . '</td>';
+        // Column 1 => Unique ID
+        echo '<td>' . htmlspecialchars($row['unique_id']) . '</td>';
 
-		 // Render each control field as its own column
-		 foreach ($controls as $ctrl) {
-		     $fieldTitle = $ctrl['field_title'];
-		     $value = isset($data[$fieldTitle]) ? $data[$fieldTitle] : "";
-		     
-		     // For file uploads (stored as media/...)
-		     // For file uploads (stored as media/...)
-				if ($ctrl['type'] === 'file' && strpos($value, 'media/') === 0) {
-					 $extension = strtolower(pathinfo($value, PATHINFO_EXTENSION));
-					 $modalContent = "";
-					 if (in_array($extension, ['jpg', 'jpeg', 'png', 'gif'])) {
-						  $modalContent = "<img src='" . htmlspecialchars($value) . "' style='max-width:100%;'/>";
-					 } elseif (in_array($extension, ['mov', 'mp4', 'webm'])) {
-						  $modalContent = "<video controls style='max-width:100%;'><source src='" . htmlspecialchars($value) . "' type='video/" . $extension . "'>Tu navegador no soporta video.</video>";
-					 } else {
-						  $modalContent = "Archivo no soportado para vista previa.";
-					 }
-					 // JSON-encode the content so it can be safely placed in a data attribute.
-					 $jsonContent = htmlspecialchars(json_encode($modalContent), ENT_QUOTES, 'UTF-8');
-					 echo '<td><a href="#" class="show-modal" data-content=\'' . $jsonContent . '\'>Ver Archivo</a></td>';
-				}
-				// For textarea fields, open a modal and render the HTML
-				elseif ($ctrl['type'] === 'textarea') {
-					 // Optionally show a short preview (first 50 characters with HTML tags stripped)
-					 $preview = substr(strip_tags($value), 0, 50);
-					 $jsonContent = htmlspecialchars(json_encode($value), ENT_QUOTES, 'UTF-8');
-					 echo '<td><a href="#" class="show-modal" data-content=\'' . $jsonContent . '\'>' . htmlspecialchars($preview) . '...</a></td>';
-				} else {
-					 echo '<td>' . htmlspecialchars($value) . '</td>';
-				}
-		 }
+        // Next columns => each control from JSON
+        foreach ($controls as $ctrl) {
+            $fieldTitle = $ctrl['field_title'];
+            $value = isset($data[$fieldTitle]) ? $data[$fieldTitle] : "";
 
-		 // Fecha y Hora
-		 echo '<td>' . htmlspecialchars($row['datetime']) . '</td>';
-		 // Epoch
-		 echo '<td>' . htmlspecialchars($row['epoch']) . '</td>';
-		 // IP
-		 echo '<td>' . htmlspecialchars($row['ip']) . '</td>';
-		 // User Agent
-		 echo '<td>' . htmlspecialchars($row['user_agent']) . '</td>';
+            // Handle file or textarea with modals (if needed)
+            if ($ctrl['type'] === 'file' && strpos($value, 'media/') === 0) {
+                $extension = strtolower(pathinfo($value, PATHINFO_EXTENSION));
+                $modalContent = "";
+                if (in_array($extension, ['jpg','jpeg','png','gif'])) {
+                    $modalContent = "<img src='" . htmlspecialchars($value) . "' style='max-width:100%;'/>";
+                } elseif (in_array($extension, ['mov','mp4','webm'])) {
+                    $modalContent = "<video controls style='max-width:100%;'><source src='" . htmlspecialchars($value) . "' type='video/" . $extension . "'>Tu navegador no soporta video.</video>";
+                } else {
+                    $modalContent = "Archivo no soportado para vista previa.";
+                }
+                $jsonContent = htmlspecialchars(json_encode($modalContent), ENT_QUOTES, 'UTF-8');
+                echo '<td><a href="#" class="show-modal" data-content=\'' . $jsonContent . '\'>Ver Archivo</a></td>';
+            } elseif ($ctrl['type'] === 'textarea') {
+                // Show partial preview
+                $preview = substr(strip_tags($value), 0, 50);
+                $jsonContent = htmlspecialchars(json_encode($value), ENT_QUOTES, 'UTF-8');
+                echo '<td><a href="#" class="show-modal" data-content=\'' . $jsonContent . '\'>' . htmlspecialchars($preview) . '...</a></td>';
+            } else {
+                echo '<td>' . htmlspecialchars($value) . '</td>';
+            }
+        }
 
-		 // Actions
-		 echo '<td>
-		         <a href="?admin=viewsubmission&id=' . $row['id'] . '">Ver Detalles</a> | 
-		         <a href="?admin=deletesubmission&id=' . $row['id'] . '">Eliminar</a>
-		       </td>';
-		 echo '</tr>';
-	}
+        // datetime
+        echo '<td>' . htmlspecialchars($row['datetime']) . '</td>';
+        // epoch
+        echo '<td>' . htmlspecialchars($row['epoch']) . '</td>';
+        // IP
+        echo '<td>' . htmlspecialchars($row['ip']) . '</td>';
+        // user agent
+        echo '<td>' . htmlspecialchars($row['user_agent']) . '</td>';
+
+        // actions
+        echo '<td>
+                <a href="?admin=viewsubmission&id=' . $row['id'] . '">Ver Detalles</a> | 
+                <a href="?admin=deletesubmission&id=' . $row['id'] . '">Eliminar</a>
+              </td>';
+        echo '</tr>';
+    }
     
     echo "</tbody>";
     echo "</table>";
     echo "</div>";
 
-    // ----- Modal Container -----
+    // ----- Modal Container for file/textarea previews -----
     echo <<<HTML
 <div id="modalOverlay" style="display:none; position: fixed; top:0; left:0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000;">
   <div id="modalContent" style="position: absolute; top:50%; left:50%; transform: translate(-50%, -50%); background:#fff; padding:20px; border-radius:8px; max-height:90%; overflow:auto; max-width:90%;">
@@ -897,10 +927,10 @@ function admin_view_submissions($form_id) {
 </div>
 HTML;
 
-    // ----- JavaScript for modal and filtering -----
+    // ----- JavaScript for modal and for filtering -----
     echo <<<JS
 <script>
-// Modal functions
+// Show a modal with arbitrary HTML content
 function showModal(content) {
     var overlay = document.getElementById('modalOverlay');
     var inner = document.getElementById('modalInnerContent');
@@ -912,21 +942,19 @@ document.getElementById('modalClose').addEventListener('click', function(){
     document.getElementById('modalOverlay').style.display = 'none';
 });
 document.getElementById('modalOverlay').addEventListener('click', function(e){
-    if(e.target === this) {
+    if (e.target === this) {
         this.style.display = 'none';
     }
 });
 
-// Attach click event listener to all elements with the "show-modal" class.
+// Attach click event to .show-modal links
 document.addEventListener('DOMContentLoaded', function() {
     var links = document.querySelectorAll('.show-modal');
     links.forEach(function(link) {
         link.addEventListener('click', function(e) {
             e.preventDefault();
-            // The data attribute contains a JSON-encoded string.
             var data = this.getAttribute('data-content');
             try {
-                // Parse the JSON to get the actual HTML content.
                 var content = JSON.parse(data);
                 showModal(content);
             } catch (err) {
@@ -936,7 +964,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
-// Filtering function remains unchanged.
+// Existing filter function:
 function filterTable() {
     var table = document.getElementById('submissionsTable');
     var thead = table.getElementsByTagName('thead')[0];
@@ -965,6 +993,9 @@ function filterTable() {
     }
 }
 </script>
+
+<!-- Include the separate JS file that generates the pie charts: -->
+<script src="pieCharts.js"></script>
 JS;
     html_footer();
 }
@@ -1308,5 +1339,4 @@ function mostrar_envio_publico($unique_id) {
     html_footer();
 }
 ?>
-
 

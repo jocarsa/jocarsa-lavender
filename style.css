@@ -58,7 +58,12 @@ body {
   background: #7E57C2;
   padding: 10px 0;
 }
-
+th{
+	vertical-align:bottom;
+}
+svg{
+	margin-bottom:20px;
+}
 #adminmenu ul {
   list-style: none;
   display: flex;
@@ -418,5 +423,34 @@ table tr:hover {
 }
 .submission-report{
 	
+}
+.piechart-container{
+	width:80px;
+	height:80px;
+	margin:auto;
+	margin-bottom:20px;
+}
+.botonreset{
+	padding: 0px;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-44%, -91%);
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: none;
+    background: rgb(255 255 255);
+    color: rgb(255 3 3);
+    font-weight: bold;
+    font-size: 14px;
+    cursor: pointer;
+    display: inline-block;
+    z-index: 10;
+    display:none;
+    transition:all 1s;
+}
+.botonreset:hover{
+	transform: translate(-44%, -91%);
 }
 
