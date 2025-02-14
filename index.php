@@ -822,55 +822,121 @@ function admin_view_submissions($form_id) {
     $result = $db->query($query);
     
     while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
-         // Parse the JSON data
-         $data = json_decode($row['data'], true);
-         if (!is_array($data)) {
-             $data = [];
-         }
+		 // Parse the JSON data
+		 $data = json_decode($row['data'], true);
+		 if (!is_array($data)) {
+		     $data = [];
+		 }
 
-         echo "<tr>";
-         // ID
-         echo "<td>" . htmlspecialchars($row['id']) . "</td>";
-         // Unique ID
-         echo "<td>" . htmlspecialchars($row['unique_id']) . "</td>";
+		 echo '<tr>';
+		 // ID
+		 echo '<td>' . htmlspecialchars($row['id']) . '</td>';
+		 // Unique ID
+		 echo '<td>' . htmlspecialchars($row['unique_id']) . '</td>';
 
-         // Render each control field as its own column
-         foreach ($controls as $ctrl) {
-             $fieldTitle = $ctrl['field_title'];
-             $value = isset($data[$fieldTitle]) ? $data[$fieldTitle] : "";
-             // If it's a file (media/...), show download link
-             if (strpos($value, 'media/') === 0) {
-                 $filename = basename($value);
-                 echo "<td><a href='" . htmlspecialchars($value) . "' target='_blank'>" . htmlspecialchars($filename) . "</a></td>";
-             } else {
-                 echo "<td>" . htmlspecialchars($value) . "</td>";
-             }
-         }
+		 // Render each control field as its own column
+		 foreach ($controls as $ctrl) {
+		     $fieldTitle = $ctrl['field_title'];
+		     $value = isset($data[$fieldTitle]) ? $data[$fieldTitle] : "";
+		     
+		     // For file uploads (stored as media/...)
+		     // For file uploads (stored as media/...)
+				if ($ctrl['type'] === 'file' && strpos($value, 'media/') === 0) {
+					 $extension = strtolower(pathinfo($value, PATHINFO_EXTENSION));
+					 $modalContent = "";
+					 if (in_array($extension, ['jpg', 'jpeg', 'png', 'gif'])) {
+						  $modalContent = "<img src='" . htmlspecialchars($value) . "' style='max-width:100%;'/>";
+					 } elseif (in_array($extension, ['mov', 'mp4', 'webm'])) {
+						  $modalContent = "<video controls style='max-width:100%;'><source src='" . htmlspecialchars($value) . "' type='video/" . $extension . "'>Tu navegador no soporta video.</video>";
+					 } else {
+						  $modalContent = "Archivo no soportado para vista previa.";
+					 }
+					 // JSON-encode the content so it can be safely placed in a data attribute.
+					 $jsonContent = htmlspecialchars(json_encode($modalContent), ENT_QUOTES, 'UTF-8');
+					 echo '<td><a href="#" class="show-modal" data-content=\'' . $jsonContent . '\'>Ver Archivo</a></td>';
+				}
+				// For textarea fields, open a modal and render the HTML
+				elseif ($ctrl['type'] === 'textarea') {
+					 // Optionally show a short preview (first 50 characters with HTML tags stripped)
+					 $preview = substr(strip_tags($value), 0, 50);
+					 $jsonContent = htmlspecialchars(json_encode($value), ENT_QUOTES, 'UTF-8');
+					 echo '<td><a href="#" class="show-modal" data-content=\'' . $jsonContent . '\'>' . htmlspecialchars($preview) . '...</a></td>';
+				} else {
+					 echo '<td>' . htmlspecialchars($value) . '</td>';
+				}
+		 }
 
-         // Fecha y Hora
-         echo "<td>" . htmlspecialchars($row['datetime']) . "</td>";
-         // Epoch
-         echo "<td>" . htmlspecialchars($row['epoch']) . "</td>";
-         // IP
-         echo "<td>" . htmlspecialchars($row['ip']) . "</td>";
-         // User Agent
-         echo "<td>" . htmlspecialchars($row['user_agent']) . "</td>";
+		 // Fecha y Hora
+		 echo '<td>' . htmlspecialchars($row['datetime']) . '</td>';
+		 // Epoch
+		 echo '<td>' . htmlspecialchars($row['epoch']) . '</td>';
+		 // IP
+		 echo '<td>' . htmlspecialchars($row['ip']) . '</td>';
+		 // User Agent
+		 echo '<td>' . htmlspecialchars($row['user_agent']) . '</td>';
 
-         // Actions
-         echo "<td>
-                 <a href='?admin=viewsubmission&id=" . $row['id'] . "'>Ver Detalles</a> | 
-                 <a href='?admin=deletesubmission&id=" . $row['id'] . "'>Eliminar</a>
-               </td>";
-         echo "</tr>";
-    }
+		 // Actions
+		 echo '<td>
+		         <a href="?admin=viewsubmission&id=' . $row['id'] . '">Ver Detalles</a> | 
+		         <a href="?admin=deletesubmission&id=' . $row['id'] . '">Eliminar</a>
+		       </td>';
+		 echo '</tr>';
+	}
     
     echo "</tbody>";
     echo "</table>";
     echo "</div>";
 
-    // JavaScript for filtering columns
-    echo "
+    // ----- Modal Container -----
+    echo <<<HTML
+<div id="modalOverlay" style="display:none; position: fixed; top:0; left:0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 1000;">
+  <div id="modalContent" style="position: absolute; top:50%; left:50%; transform: translate(-50%, -50%); background:#fff; padding:20px; border-radius:8px; max-height:90%; overflow:auto; max-width:90%;">
+    <span id="modalClose" style="cursor:pointer; position:absolute; top:10px; right:15px; font-size:24px;">&times;</span>
+    <div id="modalInnerContent"></div>
+  </div>
+</div>
+HTML;
+
+    // ----- JavaScript for modal and filtering -----
+    echo <<<JS
 <script>
+// Modal functions
+function showModal(content) {
+    var overlay = document.getElementById('modalOverlay');
+    var inner = document.getElementById('modalInnerContent');
+    inner.innerHTML = content;
+    overlay.style.display = 'block';
+}
+
+document.getElementById('modalClose').addEventListener('click', function(){
+    document.getElementById('modalOverlay').style.display = 'none';
+});
+document.getElementById('modalOverlay').addEventListener('click', function(e){
+    if(e.target === this) {
+        this.style.display = 'none';
+    }
+});
+
+// Attach click event listener to all elements with the "show-modal" class.
+document.addEventListener('DOMContentLoaded', function() {
+    var links = document.querySelectorAll('.show-modal');
+    links.forEach(function(link) {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+            // The data attribute contains a JSON-encoded string.
+            var data = this.getAttribute('data-content');
+            try {
+                // Parse the JSON to get the actual HTML content.
+                var content = JSON.parse(data);
+                showModal(content);
+            } catch (err) {
+                console.error("Error parsing modal content", err);
+            }
+        });
+    });
+});
+
+// Filtering function remains unchanged.
 function filterTable() {
     var table = document.getElementById('submissionsTable');
     var thead = table.getElementsByTagName('thead')[0];
@@ -899,7 +965,7 @@ function filterTable() {
     }
 }
 </script>
-";
+JS;
     html_footer();
 }
 
