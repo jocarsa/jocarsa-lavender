@@ -744,7 +744,7 @@ function admin_edit_form($form_id) {
 //
 function admin_view_submissions($form_id) {
     global $db;
-    
+
     // Check form ownership.
     $stmt = $db->prepare("SELECT username FROM form_owners WHERE form_id = :form_id");
     $stmt->bindValue(':form_id', $form_id, SQLITE3_INTEGER);
@@ -753,7 +753,7 @@ function admin_view_submissions($form_id) {
          echo "No tienes permiso para ver los envíos de este formulario.";
          exit;
     }
-    
+
     // Retrieve the form details.
     $stmt = $db->prepare("SELECT * FROM forms WHERE id = :id");
     $stmt->bindValue(':id', $form_id, SQLITE3_INTEGER);
@@ -762,7 +762,7 @@ function admin_view_submissions($form_id) {
          echo "Formulario no encontrado.";
          exit;
     }
-    
+
     html_header("Envíos para " . $form['title'] . " - " . APP_NAME);
     admin_menu();
     echo "<div id='content'>";
@@ -854,7 +854,7 @@ function admin_view_submissions($form_id) {
     // Fetch all submissions for this form
     $query = "SELECT * FROM submissions WHERE form_id = " . intval($form_id) . " ORDER BY id DESC";
     $result = $db->query($query);
-    
+
     while ($row = $result->fetchArray(SQLITE3_ASSOC)) {
         // Parse the JSON data
         $data = json_decode($row['data'], true);
@@ -882,7 +882,10 @@ function admin_view_submissions($form_id) {
                 } elseif (in_array($extension, ['mov','mp4','webm'])) {
                     $modalContent = "<video controls style='max-width:100%;'><source src='" . htmlspecialchars($value) . "' type='video/" . $extension . "'>Tu navegador no soporta video.</video>";
                 } else {
-                    $modalContent = "Archivo no soportado para vista previa.";
+                    // Provide a download link for unsupported files
+                    $filename = basename($value);
+                    $downloadFilename = "nombre completo modulo profesional " . $filename;
+                    $modalContent = "<a href='" . htmlspecialchars($value) . "' download='" . htmlspecialchars($downloadFilename) . "'>Descargar Archivo</a>";
                 }
                 $jsonContent = htmlspecialchars(json_encode($modalContent), ENT_QUOTES, 'UTF-8');
                 echo '<td><a href="#" class="show-modal" data-content=\'' . $jsonContent . '\'>Ver Archivo</a></td>';
@@ -907,12 +910,12 @@ function admin_view_submissions($form_id) {
 
         // actions
         echo '<td>
-                <a href="?admin=viewsubmission&id=' . $row['id'] . '">Ver Detalles</a> | 
+                <a href="?admin=viewsubmission&id=' . $row['id'] . '">Ver Detalles</a> |
                 <a href="?admin=deletesubmission&id=' . $row['id'] . '">Eliminar</a>
               </td>';
         echo '</tr>';
     }
-    
+
     echo "</tbody>";
     echo "</table>";
     echo "</div>";
@@ -968,7 +971,7 @@ document.addEventListener('DOMContentLoaded', function() {
 function filterTable() {
     var table = document.getElementById('submissionsTable');
     var thead = table.getElementsByTagName('thead')[0];
-    var filterRow = thead.getElementsByTagName('tr')[0]; 
+    var filterRow = thead.getElementsByTagName('tr')[0];
     var filterInputs = filterRow.getElementsByTagName('input');
     var tbody = table.getElementsByTagName('tbody')[0];
     var tr = tbody.getElementsByTagName('tr');
@@ -999,6 +1002,7 @@ function filterTable() {
 JS;
     html_footer();
 }
+
 
 function admin_delete_form($form_id) {
     global $db;
