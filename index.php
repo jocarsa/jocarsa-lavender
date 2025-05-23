@@ -366,7 +366,7 @@ HTML;
                  break;
              case 'checkbox':
                  $options = array_map('trim', explode(',', $control['field_values']));
-                 echo "<div class='contieneopciones'>";
+                 echo "<div class='contieneopciones' style='width:100%;'>";
                  foreach ($options as $opt) {
                      $optSafe = htmlspecialchars($opt);
                      echo "<label><input type='checkbox' name='" . htmlspecialchars($nombre_campo) . "[]' value='{$optSafe}'> {$optSafe}</label>";
