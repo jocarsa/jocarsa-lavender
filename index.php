@@ -338,9 +338,11 @@ HTML;
     echo "<form method='post' id='publicForm' enctype='multipart/form-data'>";
     foreach ($controles as $control) {
          echo "<div class='form-field" . ($control['type'] === 'none' ? " none-type" : "") . "'>";
+         //echo "<label>" . htmlspecialchars($control['field_title']) . ($control['required'] ? " *" : "") . ":<br>";
          echo "<label>" . htmlspecialchars($control['field_title']) . ($control['required'] ? " *" : "") . ":<br>";
          if (!empty($control['description'])) {
-             echo "<small>" . htmlspecialchars($control['description']) . "</small><br>";
+             //echo "<small>" . htmlspecialchars($control['description']) . "</small><br>";
+             echo "<small>" . $control['description'] . "</small><br>";
          }
          echo "</label>";
          $nombre_campo = "campo_" . $control['id'];
